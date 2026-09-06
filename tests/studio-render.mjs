@@ -17,7 +17,15 @@
  *      PUTs when the server accepts: a rejected validation never reaches the
  *      PUT, and the accepted one sends AUTHORING nodes under the open name;
  *   5. a bundled workflow opens read-only — Save as, no Delete, no palette;
- *   6. New seeds a valid one-node workflow and the palette adds to it.
+ *   6. New seeds a valid one-node workflow and the palette adds to it;
+ *   7. the YAML preview renders the authoring form;
+ *   8. clicking an edge selects it even though the click bubbles up to the
+ *      svg's clear-selection handler, and Delete selected removes it;
+ *   9. a network-level fetch rejection during Save clears the busy state and
+ *      keeps the unsaved edits, so a retry can succeed;
+ *  10. Rename writes the new name BEFORE deleting the old one, Delete arms on
+ *      the first click and only deletes on the second, and Save as copies a
+ *      bundled workflow into the project under the new name.
  *
  * The sandbox has no `document`, no `EventSource`, and a `window` without
  * `addEventListener`, so this also proves the Studio's browser-API guards.
@@ -172,6 +180,8 @@ const BUNDLED_DEFINITION = {
 const calls = []
 /** Scripted `POST /workflows/validate` replies, consumed in order. */
 const validateReplies = [{ valid: false, errors: ['boom'] }, { valid: true }, { valid: true }, { valid: true }]
+/** When set, every PUT/DELETE rejects the way fetch does when the relay is down. */
+let rejectWrites = false
 
 function jsonResponse(body, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) }
@@ -181,6 +191,10 @@ function fetchStub(url, init) {
   const method = (init && init.method) || 'GET'
   const body = init && init.body ? JSON.parse(init.body) : null
   calls.push({ method, url, body })
+
+  if (rejectWrites && (method === 'PUT' || method === 'DELETE')) {
+    return Promise.reject(new TypeError('fetch failed'))
+  }
 
   if (url === '/archon/api/health') return Promise.resolve(jsonResponse({ status: 'ok', version: '0.10.1' }))
   if (url === '/archon/api/codebases') {
@@ -204,6 +218,12 @@ function fetchStub(url, init) {
   if (url === `/archon/api/workflows/fresh-flow?cwd=${encodeURIComponent(CWD)}&source=project` && method === 'PUT') {
     return Promise.resolve(jsonResponse({ workflow: body.definition, filename: 'fresh-flow.yaml', source: 'project' }))
   }
+  const projectWrite = url.match(/^\/archon\/api\/workflows\/([^/?]+)\?cwd=[^&]*&source=project$/)
+  if (projectWrite && method === 'PUT') {
+    const name = decodeURIComponent(projectWrite[1])
+    return Promise.resolve(jsonResponse({ workflow: body.definition, filename: `${name}.yaml`, source: 'project' }))
+  }
+  if (projectWrite && method === 'DELETE') return Promise.resolve(jsonResponse({ ok: true }))
   return Promise.resolve(jsonResponse({ error: 'not found' }, 404))
 }
 
@@ -401,4 +421,136 @@ assert.ok(textOf(preview).startsWith('name: fresh-flow'), 'the preview leads wit
 assert.ok(textOf(preview).includes('  - id: step-1'), 'nodes render id-first, matching what the server writes')
 console.log('  ok: the YAML preview renders the authoring form')
 
-console.log('studio-render.mjs: OK — Studio picker, canvas, inspector, and save flow')
+// ---- 9. edge clicks survive the bubble to the svg and delete an edge -------
+
+/**
+ * The shim invokes handlers directly, so DOM bubbling is simulated by hand:
+ * the target's onClick runs first, then — unless it stopped propagation — the
+ * ancestor's. This is exactly the path that once cleared an edge selection in
+ * the same click that set it.
+ */
+function bubbleClick(target, ancestor) {
+  let stopped = false
+  target.props.onClick({ stopPropagation: () => { stopped = true } })
+  if (!stopped && ancestor.props.onClick) ancestor.props.onClick()
+}
+
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // arms: fresh-flow is dirty
+studio.render()
+buttonsLabelled(studio.tree, 'Discard edits?')[0].props.onClick()
+studio.render()
+buttonsLabelled(studio.tree, 'Open')[0].props.onClick()
+await flush()
+studio.render()
+
+const svg = findAll(studio.tree, (n) => n.type === 'svg')[0]
+const visibleEdges = findAll(studio.tree, (n) => n.type === 'path' && hasClass(n, 'dsha-edge'))
+const hitEdges = findAll(studio.tree, (n) => n.type === 'path' && hasClass(n, 'dsha-edge-hit'))
+assert.equal(hitEdges.length, 2, 'every edge carries an invisible hit path')
+const plainAt = visibleEdges.findIndex((p) => p.props.strokeDasharray === undefined) // plan -> build
+bubbleClick(hitEdges[plainAt], svg)
+studio.render()
+assert.equal(findAll(studio.tree, (n) => hasClass(n, 'dsha-edge-selected')).length, 1,
+  'the edge stays selected after the click bubbles to the svg')
+
+const deleteSelected = buttonsLabelled(studio.tree, 'Delete selected')[0]
+assert.equal(deleteSelected.props.disabled, false, 'Delete selected is live for an edge selection')
+deleteSelected.props.onClick()
+studio.render()
+const edgesLeft = findAll(studio.tree, (n) => n.type === 'path' && hasClass(n, 'dsha-edge'))
+assert.equal(edgesLeft.length, 1, 'Delete selected removes the depends_on edge')
+assert.equal(edgesLeft[0].props.strokeDasharray, '6 4', 'the surviving edge is the when-gated one')
+assert.equal(findAll(studio.tree, (n) => hasClass(n, 'dsha-dirty-dot')).length, 1, 'removing an edge is an unsaved edit')
+console.log('  ok: an edge click survives bubbling and Delete selected removes the dependency')
+
+// ---- 10. a rejected fetch during Save clears busy and keeps the edits ------
+
+rejectWrites = true
+buttonsLabelled(studio.tree, 'Save')[0].props.onClick()
+await flush()
+studio.render()
+
+assert.ok(textOf(studio.tree).includes('Save failed: fetch failed'), 'a network failure is reported, not swallowed')
+const saveAfterFail = buttonsLabelled(studio.tree, 'Save')[0]
+assert.ok(saveAfterFail, 'the Save button does not stay stuck on "Saving…"')
+assert.equal(saveAfterFail.props.disabled, false, 'busy clears so the save can be retried')
+assert.equal(findAll(studio.tree, (n) => hasClass(n, 'dsha-dirty-dot')).length, 1, 'the unsaved edits survive the failure')
+
+rejectWrites = false
+buttonsLabelled(studio.tree, 'Save')[0].props.onClick()
+await flush()
+studio.render()
+assert.equal(findAll(studio.tree, (n) => hasClass(n, 'dsha-dirty-dot')).length, 0, 'the retry saves cleanly')
+console.log('  ok: a network failure during Save surfaces a notice and the retry works')
+
+// ---- 11. Rename writes the new name before deleting the old one ------------
+
+buttonsLabelled(studio.tree, 'Rename')[0].props.onClick()
+studio.render()
+findAll(studio.tree, (n) => n.type === 'input' && n.props.placeholder === 'my-workflow')[0]
+  .props.onChange({ target: { value: 'wf-b' } })
+studio.render()
+const beforeRename = calls.length
+findAll(studio.tree, (n) => n.type === 'button' && textOf(n) === 'Rename' && hasClass(n, 'dsha-btn-primary'))[0]
+  .props.onClick()
+await flush()
+studio.render()
+
+const renamed = calls.slice(beforeRename)
+const renamePut = renamed.findIndex((c) => c.method === 'PUT' && c.url.startsWith('/archon/api/workflows/wf-b?'))
+const renameDelete = renamed.findIndex((c) => c.method === 'DELETE' && c.url.startsWith('/archon/api/workflows/wf-a?'))
+assert.ok(renamePut !== -1 && renameDelete !== -1, 'Rename writes the new name and deletes the old one')
+assert.ok(renamePut < renameDelete, 'the new name is written BEFORE the old one is deleted (fail toward duplication, never loss)')
+assert.equal(renamed[renamePut].body.definition.name, 'wf-b', 'the written definition carries the new name')
+assert.ok(textOf(studio.tree).includes('Renamed to wf-b'), 'the rename is confirmed')
+console.log('  ok: Rename never deletes the old workflow before the new name is written')
+
+// ---- 12. Delete arms on the first click and deletes on the second ----------
+
+const beforeDelete = calls.length
+buttonsLabelled(studio.tree, 'Delete')[0].props.onClick()
+await flush()
+studio.render()
+assert.equal(calls.slice(beforeDelete).filter((c) => c.method === 'DELETE').length, 0, 'one click never deletes')
+const confirm = buttonsLabelled(studio.tree, 'Confirm delete?')[0]
+assert.ok(confirm, 'the first click arms the delete instead')
+confirm.props.onClick()
+await flush()
+studio.render()
+const deletes = calls.slice(beforeDelete).filter((c) => c.method === 'DELETE')
+assert.equal(deletes.length, 1, 'the second click issues exactly one DELETE')
+assert.ok(deletes[0].url.startsWith('/archon/api/workflows/wf-b?'), 'the DELETE targets the open workflow')
+assert.ok(textOf(studio.tree).includes('Deleted wf-b'), 'the delete lands back on the picker with a notice')
+console.log('  ok: Delete requires a second, arming click')
+
+// ---- 13. Save as copies a bundled workflow into the project ----------------
+
+buttonsLabelled(studio.tree, 'View')[0].props.onClick()
+await flush()
+studio.render()
+buttonsLabelled(studio.tree, 'Save as')[0].props.onClick()
+studio.render()
+const saveAsInput = findAll(studio.tree, (n) => n.type === 'input' && n.props.placeholder === 'my-workflow')[0]
+assert.equal(saveAsInput.props.value, 'wf-bundled', 'Save as pre-fills the bundled name')
+saveAsInput.props.onChange({ target: { value: 'wf-copy' } })
+studio.render()
+const beforeSaveAs = calls.length
+findAll(studio.tree, (n) => n.type === 'button' && textOf(n) === 'Save as' && !hasClass(n, 'dsha-btn-small'))[0]
+  .props.onClick()
+await flush()
+studio.render()
+
+const savedAs = calls.slice(beforeSaveAs)
+const saveAsValidate = savedAs.findIndex((c) => c.url === '/archon/api/workflows/validate')
+const saveAsPut = savedAs.findIndex((c) => c.method === 'PUT')
+assert.ok(saveAsValidate !== -1 && saveAsPut !== -1, 'Save as validates and then writes')
+assert.ok(saveAsValidate < saveAsPut, 'Save as validates before the write')
+assert.equal(savedAs[saveAsPut].url,
+  `/archon/api/workflows/wf-copy?cwd=${encodeURIComponent(CWD)}&source=project`,
+  'the copy is written under the new name into the selected project, source=project')
+assert.equal(savedAs[saveAsPut].body.definition.name, 'wf-copy', 'the definition name is forced to the new filename')
+assert.ok(textOf(studio.tree).includes('Saved wf-copy'), 'the copy is confirmed')
+assert.equal(buttonsLabelled(studio.tree, 'Save').length, 1, 'the saved copy is editable in place')
+console.log('  ok: Save as copies a bundled workflow into the project under the new name')
+
+console.log('studio-render.mjs: OK — Studio picker, canvas, inspector, save flow, and lifecycle (rename/delete/save-as)')
