@@ -74,6 +74,11 @@ for (const [label, needle] of [
   ['chat css', 'dsha-chat'],
   ['registration id', '"dsh-archon"'],
   ['null-safe health (round-8 fix)', 'loading server state'],
+  ['settings.section registration', 'settings.section'],
+  ['settings page label', '"Assistant Configuration"'],
+  ['assistant draft state', 'draftAssistants'],
+  ['platform connections card', '"Platform Connections"'],
+  ['projects add button', '+ Add project'],
 ]) {
   assert.ok(bundle.includes(needle), `served dsh-archon bundle has ${label}`)
   console.log(`  ok: served bundle has ${label}`)

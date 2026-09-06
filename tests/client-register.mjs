@@ -3,11 +3,13 @@
  *
  * Loads lib/client.js the way dsh-web-app does — as a
  * `window.__ModuleLoader__.load({ id, factory })` registration — then runs the
- * plugin's apply() against a stub slot registry and asserts the two expected
+ * plugin's apply() against a stub slot registry and asserts the three expected
  * contributions:
  *   1. `conversation.view` entry id `archon` (the M0 console tab), label Archon
  *   2. `sidebar.workspaces.tools` entry id `archon` (the sidebar tool)
- * and that a registered view component factory exists.
+ *   3. `settings.section` entry id `archon` (the Archon settings page in DSH's
+ *      Settings shell), label Archon
+ * and that each registered component factory exists.
  *
  * Run: node tests/client-register.mjs
  */
@@ -88,4 +90,13 @@ assert.equal(toolReg.opts.id, 'archon')
 assert.equal(toolReg.opts.label, 'Archon')
 assert.equal(typeof toolReg.component, 'function', 'tool component factory provided')
 
-console.log('client-register.mjs: OK — conversation.view + sidebar.workspaces.tools registered (id archon)')
+const settingsInject = injects.find((r) => r.slot === 'settings.section')
+assert.ok(settingsInject, 'registered into settings.section')
+settingsInject.factory()
+const settingsReg = registered.find((r) => r.opts.name === 'settings.section' && r.opts.id === 'archon')
+assert.ok(settingsReg, 'settings.section archon registration present')
+assert.equal(settingsReg.opts.label, 'Archon')
+assert.equal(typeof settingsReg.opts.order, 'number')
+assert.equal(typeof settingsReg.component, 'function', 'settings component factory provided')
+
+console.log('client-register.mjs: OK — conversation.view + sidebar.workspaces.tools + settings.section registered (id archon)')

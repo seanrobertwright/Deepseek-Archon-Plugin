@@ -142,7 +142,78 @@ try {
   }
   console.log('  ok: run-control verbs (approve/reject/cancel/resume/abandon) reach Archon')
 
-  // 8. Trust/auth gate contract: registerRelay must short-circuit a request
+  // 8. Settings-page endpoints (the Archon settings page inside DSH Settings
+  //    reads these + writes assistant config and project env vars).
+  const configRes = await getJson('/archon/api/config')
+  assert.equal(configRes.status, 200, 'GET /api/config through relay -> 200')
+  assert.equal(typeof configRes.body.config?.assistant, 'string', 'config carries default assistant')
+  assert.equal(typeof configRes.body.config?.assistants, 'object', 'config carries assistants map')
+  assert.equal(typeof configRes.body.database, 'string', 'config carries database name')
+  const originalAssistant = configRes.body.config.assistant
+  const assistantsMap = configRes.body.config.assistants ?? {}
+  console.log(`  ok: /archon/api/config -> default assistant ${originalAssistant}, db ${configRes.body.database}`)
+
+  const providersRes = await getJson('/archon/api/providers')
+  assert.equal(providersRes.status, 200, 'GET /api/providers through relay -> 200')
+  assert.ok(Array.isArray(providersRes.body.providers) && providersRes.body.providers.length > 0, 'providers listed')
+  const providerIds = providersRes.body.providers.map((p) => p.id)
+  console.log(`  ok: /archon/api/providers -> ${providerIds.join(', ')}`)
+
+  const codebasesRes = await getJson('/archon/api/codebases')
+  assert.equal(codebasesRes.status, 200, 'GET /api/codebases through relay -> 200')
+  assert.ok(Array.isArray(codebasesRes.body), 'codebases is an array')
+  console.log(`  ok: /archon/api/codebases -> ${codebasesRes.body.length} projects`)
+
+  if (Array.isArray(codebasesRes.body) && codebasesRes.body.length > 0) {
+    const codebaseId = codebasesRes.body[0].id
+    const envKey = 'DSHA_SETTINGS_RELAY_TEST'
+    const setEnv = await fetch(relay('/archon/api/codebases/' + encodeURIComponent(codebaseId) + '/env'), {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ key: envKey, value: 'roundtrip' }),
+      signal: AbortSignal.timeout(15000),
+    })
+    assert.ok(setEnv.ok, 'PUT codebase env var through relay succeeds')
+    const envList = await getJson('/archon/api/codebases/' + encodeURIComponent(codebaseId) + '/env')
+    assert.ok(envList.body.keys.includes(envKey), 'set env var key is listed')
+    const delEnv = await fetch(
+      relay('/archon/api/codebases/' + encodeURIComponent(codebaseId) + '/env/' + encodeURIComponent(envKey)),
+      { method: 'DELETE', signal: AbortSignal.timeout(15000) }
+    )
+    assert.ok(delEnv.ok, 'DELETE codebase env var through relay succeeds')
+    const envList2 = await getJson('/archon/api/codebases/' + encodeURIComponent(codebaseId) + '/env')
+    assert.ok(!envList2.body.keys.includes(envKey), 'deleted env var key is gone')
+    console.log('  ok: codebase env var PUT/DELETE roundtrip through the relay')
+  } else {
+    console.log('  ok: no codebases — env var roundtrip skipped')
+  }
+
+  // PATCH /api/config/assistants is idempotent for the current default and is
+  // the settings page's write path; drive it away and back to prove routing.
+  const registeredAssistant = providerIds.includes(originalAssistant)
+    ? originalAssistant
+    : providerIds[0]
+  const poke = await fetch(relay('/archon/api/config/assistants'), {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ assistant: registeredAssistant, assistants: assistantsMap }),
+    signal: AbortSignal.timeout(15000),
+  })
+  assert.ok(poke.ok, 'PATCH /api/config/assistants through relay succeeds')
+  const pokeBody = await poke.json()
+  assert.equal(pokeBody.config?.assistant, registeredAssistant, 'assistant default updated')
+  const restore = await fetch(relay('/archon/api/config/assistants'), {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ assistant: originalAssistant, assistants: assistantsMap }),
+    signal: AbortSignal.timeout(15000),
+  })
+  assert.ok(restore.ok, 'PATCH assistant restore succeeds')
+  const restoreBody = await restore.json()
+  assert.equal(restoreBody.config?.assistant, originalAssistant, 'assistant default restored')
+  console.log(`  ok: PATCH /api/config/assistants write path (${originalAssistant} -> ${registeredAssistant} -> ${originalAssistant})`)
+
+  // 9. Trust/auth gate contract: registerRelay must short-circuit a request
   //    that connection.requestRejection rejects (401/403) without proxying.
   const captured = []
   let rejection = 401
