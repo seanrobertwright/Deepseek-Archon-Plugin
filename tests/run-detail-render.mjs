@@ -17,7 +17,9 @@
  *      path segment escaped and previews the body in a <pre>;
  *   4. a binary body and an over-cap file fall back to a note + raw link
  *      instead of an inline preview;
- *   5. Close hands control back to the console.
+ *   5. Close hands control back to the console;
+ *   6. a run longer than the bundle's timeline cap renders the *newest*
+ *      capped-many events plus a count of the older ones.
  *
  * Run: node tests/run-detail-render.mjs   (no server, no dependencies)
  */
@@ -146,6 +148,11 @@ const EVENTS = [
   { id: 'ev-2', event_order: 897, event_type: 'node_started', step_name: 'impl__implement', created_at: EVENT_AT, data: { type: 'loop' } },
 ]
 
+const LONG_RUN_ID = '11a0c6de-3f4b-42d1-9c07-9e2f4f0b5a71'
+const LONG_RUN_ROW = { ...RUN_ROW, id: LONG_RUN_ID, workflow_name: 'archon-long' }
+/** Filled in by case 6, once the bundle's own timeline cap is known. */
+let longEvents = []
+
 const TEXT_FILE = { path: 'notes/plan summary.md', size: 26, modifiedAt: '2026-09-06T14:57:40.966Z' }
 const BINARY_FILE = { path: 'out/blob.bin', size: 300, modifiedAt: '2026-09-06T14:57:55.552Z' }
 const HUGE_FILE = { path: 'out/transcript.jsonl', size: 200 * 1024, modifiedAt: '2026-09-06T14:58:00.000Z' }
@@ -166,6 +173,10 @@ function fetchStub(url) {
   if (url === '/archon/api/workflows') return Promise.resolve(jsonResponse({ workflows: [] }))
   if (url.startsWith('/archon/api/workflows/runs?')) return Promise.resolve(jsonResponse({ runs: [RUN_ROW] }))
   if (url === `/archon/api/workflows/runs/${RUN_ID}`) return Promise.resolve(jsonResponse({ run: RUN_ROW, events: EVENTS }))
+  if (url === `/archon/api/workflows/runs/${LONG_RUN_ID}`) {
+    return Promise.resolve(jsonResponse({ run: LONG_RUN_ROW, events: longEvents }))
+  }
+  if (url === `/archon/api/runs/${LONG_RUN_ID}/artifacts`) return Promise.resolve(jsonResponse({ files: [] }))
   if (url === `/archon/api/runs/${RUN_ID}/artifacts`) {
     return Promise.resolve(jsonResponse({ files: [TEXT_FILE, BINARY_FILE, HUGE_FILE] }))
   }
@@ -320,5 +331,40 @@ assert.ok(fetchCalls.length > beforeRefresh, 'a refresh tick re-fetches the open
 buttonsLabelled(panel.tree, 'Close')[0].props.onClick()
 assert.equal(closed, 1, 'Close asks the console to drop the panel')
 console.log('  ok: SSE refresh tick re-fetches, Close dismisses the panel')
+
+// ---- 6. a long run keeps the newest events, not the oldest ----------------
+
+// The cap lives in the bundle and is not exported; read it back so the fixture
+// stays two events past whatever the client enforces.
+const capMatch = /TIMELINE_LIMIT = (\d+);/.exec(source)
+assert.ok(capMatch, 'bundle defines a timeline cap')
+const TIMELINE_LIMIT = Number(capMatch[1])
+
+longEvents = Array.from({ length: TIMELINE_LIMIT + 2 }, (_, i) => ({
+  id: `long-${i}`,
+  event_order: i,
+  event_type: `e${String(i).padStart(4, '0')}`,
+  step_name: null,
+  created_at: EVENT_AT,
+  data: null,
+}))
+
+const longPanel = mount(RunDetailPanel, { runId: LONG_RUN_ID, refreshTick: 0, onClose: () => {} })
+await flush()
+longPanel.render()
+
+const longRows = findAll(longPanel.tree, (n) => n.type === 'ol').flatMap((ol) => ol.children)
+assert.equal(longRows.length, TIMELINE_LIMIT + 1, 'the cap, plus one "earlier events hidden" note')
+assert.equal(textOf(longRows[0]), '2 earlier events hidden', 'the note counts every dropped event')
+assert.ok(textOf(longRows[1]).endsWith('e0002'), 'the oldest kept row is the first event past the cap')
+assert.ok(
+  textOf(longRows[longRows.length - 1]).endsWith(`e${String(TIMELINE_LIMIT + 1).padStart(4, '0')}`),
+  'the newest event is kept',
+)
+assert.ok(
+  textOf(longPanel.tree).includes(`Timeline (${TIMELINE_LIMIT + 2})`),
+  'the section title counts every event, not just the rendered ones',
+)
+console.log('  ok: a long run renders its newest events and counts the hidden ones')
 
 console.log('run-detail-render.mjs: OK — run detail drill-down + artifacts panel')
