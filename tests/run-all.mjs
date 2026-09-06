@@ -7,7 +7,7 @@
  *   1. smoke-apply.mjs        — host apply registers state route + /archon relay
  *                               + 5 tools (and degrades gracefully)
  *   2. client-register.mjs    — browser bundle registers conversation.view +
- *                               sidebar.workspaces.tools + settings.section
+ *                               sidebar.footer.action + settings.section
  *                               under __ModuleLoader__
  *   3. run-detail-render.mjs  — run detail drill-down + artifacts panel driven
  *                               against a React shim and a stub relay (offline)

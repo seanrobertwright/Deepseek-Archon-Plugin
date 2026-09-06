@@ -6,7 +6,7 @@
  * plugin's apply() against a stub slot registry and asserts the three expected
  * contributions:
  *   1. `conversation.view` entry id `archon` (the M0 console tab), label Archon
- *   2. `sidebar.workspaces.tools` entry id `archon` (the sidebar tool)
+ *   2. `sidebar.footer.action` entry id `archon` (the sidebar tool)
  *   3. `settings.section` entry id `archon` (the Archon settings page in DSH's
  *      Settings shell), label Archon
  * and that each registered component factory exists.
@@ -81,11 +81,11 @@ assert.equal(viewReg.opts.label, 'Archon')
 assert.equal(typeof viewReg.opts.order, 'number')
 assert.equal(typeof viewReg.component, 'function', 'view component factory provided')
 
-const toolInject = injects.find((r) => r.slot === 'sidebar.workspaces.tools')
-assert.ok(toolInject, 'registered into sidebar.workspaces.tools')
+const toolInject = injects.find((r) => r.slot === 'sidebar.footer.action')
+assert.ok(toolInject, 'registered into sidebar.footer.action')
 toolInject.factory()
-const toolReg = registered.find((r) => r.opts.name === 'sidebar.workspaces.tools')
-assert.ok(toolReg, 'sidebar.workspaces.tools registration present')
+const toolReg = registered.find((r) => r.opts.name === 'sidebar.footer.action')
+assert.ok(toolReg, 'sidebar.footer.action registration present')
 assert.equal(toolReg.opts.id, 'archon')
 assert.equal(toolReg.opts.label, 'Archon')
 assert.equal(typeof toolReg.component, 'function', 'tool component factory provided')
@@ -99,4 +99,4 @@ assert.equal(settingsReg.opts.label, 'Archon')
 assert.equal(typeof settingsReg.opts.order, 'number')
 assert.equal(typeof settingsReg.component, 'function', 'settings component factory provided')
 
-console.log('client-register.mjs: OK — conversation.view + sidebar.workspaces.tools + settings.section registered (id archon)')
+console.log('client-register.mjs: OK — conversation.view + sidebar.footer.action + settings.section registered (id archon)')

@@ -121,7 +121,7 @@ Archon visual layer can use:
 | Whole new per-session tab (full content area, like Terminal/Trajectory beside Chat) | `conversation.view` list entry (`id: 'archon'`, `order`, `label`) + `ctx.uiConversation.views.register(...)` + hooks via `ctx.uiSession.provide` |
 | Replace the whole conversation column | `conversation` (single, session-maybe) — heavy, replaces chat |
 | Frame-wide floating panel (like an embedded browser / file manager) | `shell.overlay` (list) with a fresh `id` |
-| Tool icon in the sidebar workspaces toolbar | `sidebar.workspaces.tools` (list) |
+| Tool icon at the sidebar foot beside Settings | `sidebar.footer.action` (list) |
 | Render inside chat stream for a new "run/agent card" node | keyed `conversation.chat.node` + `ConversationNodeDefinition` (durable data path via session events) |
 | Tool-result rendering keyed by tool name | `tool.call.toolview` |
 | Settings page sections | `settings.section` lists |
@@ -265,7 +265,7 @@ browser disconnects). A `/api/dsh-archon/state` authenticated fetch route probes
 reachability/config for the UI.
 
 **M0 console** (`lib/client.js`): an `archon` entry in the `conversation.view`
-tab list (beside Chat/Trajectory/Terminal) plus a `sidebar.workspaces.tools`
+tab list (beside Chat/Trajectory/Terminal) plus a `sidebar.footer.action`
 entry. The tab renders server health/version, registered codebases, discoverable
 workflows, and recent workflow runs, and live-refreshes on
 `/archon/api/stream/__dashboard__` SSE frames (`workflow_status`, `dag_node`).
