@@ -443,6 +443,59 @@ Chat (conversation list/create + composer) · five `archon_*` agent tools
 through the real trust fence. `node tests/run-all.mjs` (six suites incl.
 gui-e2e) is green and both Playwright render checks pass.
 
+## Round-11 state — Archon's settings inside DSH's Settings shell
+
+The DSH settings surface has an additive whole-page seat — `settings.section`
+(root-scope list; the shell projects nav rows from each registration's
+`id`/`order`/`label` and renders the active section in its content column).
+The plugin now registers an **Archon** page there
+(`{ name: 'settings.section', id: 'archon', order: 30, label: 'Archon' }`, next
+to the shipped General/Models/Plugins/agent-presets pages and the
+theme-claude sibling's Theme page) in `lib/client.js` — the same
+`slots.inject('settings.section', () => slots.register(...))` shape the
+out-of-tree `dsh-client-ui-theme-claude` plugin uses.
+
+The page mirrors **Archon's own Settings page** (reference
+`packages/web/src/routes/SettingsPage.tsx`) over the existing `/archon` relay —
+no new host code, no DSH-model involvement, component-local state only
+(report 04 §7 rules):
+- **Server & System**: health status/version, adapter, database, running
+  workflows, relay target (`/api/dsh-archon/state`), concurrency bar
+  (`health.concurrency.active / maxConcurrent`).
+- **Assistant Configuration**: default-assistant select + per-provider model
+  defaults editor (claude model; codex model + reasoning effort drawn from the
+  provider's `effortLevels` + web-search mode; other providers show their
+  generic Phase-2 stored settings), dirty-tracked against the loaded
+  `SafeConfig` and saved via `PATCH /archon/api/config/assistants` — the same
+  payload/endpoint Archon's own page uses.
+- **Platform Connections**: badge list from `health.activePlatforms`.
+- **Projects**: codebase list with remove + lazily-loaded per-project env-var
+  panels (`GET/PUT/DELETE /archon/api/codebases/{id}/env[/{key}]`; values are
+  never returned) and register-add for a GitHub URL or local path
+  (`POST /archon/api/codebases`).
+- An unreachable Archon renders a connection banner naming the relay target
+  with remediation (start the server / set `DSH_ARCHON_BASE_URL`).
+
+Verification (all green):
+1. `client-register.mjs` asserts the third contribution — `settings.section`
+   entry `archon` — beside the existing conversation.view + sidebar tool.
+2. `relay-loopback.mjs` now covers the settings endpoints through the relay:
+   `GET /config` (default assistant + assistants map + database), `GET
+   /providers` (claude/codex/opencode/pi/copilot), `GET /codebases`, a codebase
+   env-var PUT/DELETE roundtrip, and the `PATCH /config/assistants` write path
+   (drive away and restore the default assistant).
+3. `gui-e2e.mjs` fingerprints the served bundle for the settings code
+   (`settings.section`, "Assistant Configuration", `draftAssistants`,
+   "Platform Connections", "+ Add project").
+4. New `tests/gui-settings-verify.py` (Playwright) opens the live GUI's
+   Settings gear → **Archon** nav and asserts the full page renders — Server &
+   System, Assistant Configuration (default assistant select + claude/codex
+   editors), Platform Connections (Web Connected), Projects — with zero page or
+   console errors; screenshot at `artifacts/40-settings-archon.png`.
+
+`node tests/run-all.mjs` (six suites incl. the new relay/gui fingerprints) and
+`python tests/gui-settings-verify.py` are green.
+
 ## 7. Open questions (deferred)
 
 1. **Auth posture for the Archon server** the relay talks to: default no-auth

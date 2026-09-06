@@ -75,11 +75,12 @@ def main():
         text = ''
         if root:
             text = root.inner_text()
-            checks['Server & System card'] = 'Server & System' in text
-            checks['Assistant Configuration card'] = 'Assistant Configuration' in text
+            up = text.upper()  # card titles render uppercase via CSS text-transform
+            checks['Server & System card'] = 'SERVER & SYSTEM' in up
+            checks['Assistant Configuration card'] = 'ASSISTANT CONFIGURATION' in up
             checks['default assistant select rendered'] = root.query_selector('#dsha-default-assistant') is not None
-            checks['Platform Connections card'] = 'Platform Connections' in text
-            checks['Projects card'] = 'Projects' in text
+            checks['Platform Connections card'] = 'PLATFORM CONNECTIONS' in up
+            checks['Projects card'] = 'PROJECTS' in up
             checks['add project affordance'] = 'Add project' in text
             checks['server status ok text'] = 'ok' in text and 'concurrent' in text
             checks['no unreachable banner'] = 'unreachable' not in text.lower()

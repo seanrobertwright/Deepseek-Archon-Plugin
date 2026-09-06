@@ -56,6 +56,21 @@
   the row twice); the profile patch is the single source.
 - **Human-confirmed working** (round 10): refreshed the DSH GUI and verified the
   Archon tab renders with live Archon data. Objective achieved.
+- **Archon settings added to DSH's Settings** (round 11): the plugin now also
+  registers a `settings.section` page (`id: archon`) — open DSH's Settings
+  (sidebar gear) and pick **Archon**. It mirrors Archon's own Settings page
+  through the same `/archon` relay: **Server & System** (health, version,
+  database, adapter, running workflows, concurrency bar, relay target),
+  **Assistant Configuration** (default assistant + per-provider model
+  defaults — claude model; codex model / reasoning effort / web search —
+  saved via `PATCH /archon/api/config/assistants`), **Platform Connections**,
+  and **Projects** (register/remove projects + per-project env vars via the
+  codebases env endpoints). Read-only + direct user-gesture writes; no DSH
+  model involvement. Verified end-to-end: registration test, relay coverage of
+  `/config`, `/providers`, `/codebases`, env-var PUT/DELETE and the assistants
+  PATCH write path, live-GUI bundle fingerprints, and a Playwright
+  click-through of Settings → Archon (`tests/gui-settings-verify.py` — all
+  checks pass, zero page errors).
 
 ## Try it live
 
@@ -66,6 +81,11 @@ session: an **Archon** tab appears beside Chat/Trajectory/Terminal, plus a ◆
 sidebar icon. With an Archon v0.10.1 server reachable at
 `http://127.0.0.1:3090` (override via `DSH_ARCHON_BASE_URL`), the tab shows live
 server/project/workflow/run state and lets you launch and control runs.
+
+**Archon settings**: click DSH's Settings gear (sidebar foot) and pick the
+**Archon** page — the mirrored engine settings (server/system, assistant
+configuration with a Save button, platform connections, projects with env
+vars) load from and write to the live Archon server through the relay.
 
 To re-install from a clean profile (e.g. after moving the workspace):
 
@@ -81,6 +101,7 @@ dsh plugin --profile web add <parent-dir>/dsh-archon   # NB: run from a path
 node tests/run-all.mjs    # host smoke + client registration + relay loopback
 # relay-loopback needs a live Archon API: either start one (see docs/research/02)
 # or point DSH_ARCHON_BASE_URL at any running Archon server.
+python tests/gui-settings-verify.py   # Playwright: Settings → Archon click-through
 ```
 
 ## Layout
@@ -90,11 +111,14 @@ lib/index.js            host entry: /api/dsh-archon/state + /archon relay + tool
 lib/host/relay.js       same-origin reverse proxy (REST + SSE) to Archon
 lib/host/archon-client.js  outbound Archon REST client (host side)
 lib/host/tools.js       M3: archon_status/workflows/runs/run/control agent tools
-lib/client.js           browser half: Archon console tab + sidebar tool (M0+M1)
+lib/client.js           browser half: Archon console tab + chat + sidebar tool
+                        (M0/M1/M2) + settings.section page (Archon engine
+                        settings)
 cordis.patch.yml        loader patch: insert row id=archon -> this package
 tests/                  run-all.mjs (smoke-apply, client-register,
                         run-detail-render, tools-live, chat-sse-live,
-                        relay-loopback, gui-e2e)
+                        relay-loopback, gui-e2e) +
+                        gui-settings-verify.py (Playwright settings click-through)
 docs/research/          deep-dive research reports (Archon + DSH)
 docs/ARCHITECTURE.md    integration architecture + decisions + round state
 docs/ACTIVATION.md      live-profile install state + restart checklist
