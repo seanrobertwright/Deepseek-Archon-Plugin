@@ -1,149 +1,330 @@
+<p align="center">
+  <img src="./archon-vertical-spin.svg" alt="Archon" width="200" height="200">
+</p>
+
 # dsh-archon
 
-> Objective: deeply understand [coleam00/Archon](https://github.com/coleam00/Archon)
-> (reference docs at [archon.diy](https://archon.diy)) and build a plugin that makes
-> **DSH (DeepSeek Harness) the visual layer / web UI for Archon**.
+**Archon inside the DeepSeek Harness.** This plugin turns the DSH web UI into a
+visual layer for [coleam00/Archon](https://github.com/coleam00/Archon), the
+governed agentic-automation engine, so you can launch, watch, approve, and chat
+with Archon workflows without leaving the harness. The DSH model gets the same
+powers through five `archon_*` tools.
 
-## Status
+## Introduction
 
-- **Deep-understanding phase complete** (round 1): four research reports in
-  `docs/research/`; integration architecture in `docs/ARCHITECTURE.md`.
-- **Decisions locked**: target = Archon **v0.10.1 source server** (REST/SSE API);
-  surfaces = console/dashboard tab + run controls + Archon chat + DSH agent
-  tools; mode = same-origin host relay.
-- **M0 + M1 + M2 + M3 built and verified** (rounds 2–5): the plugin is an
-  external bundle shaped exactly like the sibling plugins already linked into the
-  live web profile. Host half reverse-proxies Archon under same-origin
-  `/archon/*` (REST **and** live SSE) behind the DSH connection trust/auth gate;
-  browser half registers an **Archon** conversation-view tab with two modes:
-  **Console** (server health, registered projects, discoverable workflows,
-  recent runs + run controls: launch; approve/reject/resume/cancel/abandon;
-  live dashboard SSE) and **Chat** (pick/create a web conversation, stream the
-  routing agent's replies + tool activity over per-conversation SSE, send
-  messages). The host registers five **`archon_*` agent tools**
-  (status/workflows/runs/run/control) so the DSH model can drive Archon from
-  normal chat.
-- **Live-GUI end-to-end verified** (round 7, `tests/gui-e2e.mjs`): authenticating
-  to the running GUI proves the Archon tab is registered (boot graph injects
-  `dsh-archon/client.js`), the served bundle carries the current M0/M1/M2 code,
-  and `/archon/api/health` through the relay returns live Archon v0.10.1 JSON
-  (15 conversations / 77 workflows / 3 real runs served through the same proxy).
-  Every test suite in `tests/run-all.mjs` green.
-- **Run detail drill-down + artifacts panel** (M-next-2 + M-next-3,
-  `docs/plans/run-detail-artifacts.plan.md`): every Runs row carries a
-  **Details** button that opens a side panel with the run header, an event
-  timeline (`GET /archon/api/workflows/runs/{id}`; a long run renders its newest 300
-  events, with a count of the older ones), and the run's artifacts
-  (`GET /archon/api/runs/{id}/artifacts`); clicking a textual artifact previews it
-  inline from `GET /archon/api/artifacts/{id}/*`, while binary and over-cap files
-  offer a raw link instead. Live dashboard SSE re-fetches an open panel.
-  Client-only — the relay already proxies these read routes.
-- **Real run lifecycle verified against the scratch Archon v0.10.1 server**
-  (`:3090`): a `dsha-demo` run completed; a `dsha-gate` run paused at its
-  approval gate and both **approve → completed** and **reject → cancelled**
-  succeeded through the exact M1 write verbs; the **M2 chat path** (message
-  dispatch → routing-agent reply → history) and the **per-conversation SSE
-  stream** both relay correctly.
-- **Installed into the live web profile — and the host row is LIVE without a
-  restart** (`~\.dsh\profiles\web`): the dependency is linked and
-  the loader row is inserted by the profile's **live patch layer** (the web
-  profile hot-reloads `cordis.patch.yml`), so the running `dsh web` process
-  mounted the `/archon` relay immediately. Verified: a forged-Host request to
-  `/archon/api/health` returns **403** (this plugin's trust fence) while a
-  nonexistent path returns 404; `--dump-config` composes exactly one archon row.
-  A **browser refresh** loads the composed client row — see `docs/ACTIVATION.md`.
-  Important: do NOT also add dsh-archon to `dsh.profile.bundles` (would insert
-  the row twice); the profile patch is the single source.
-- **Human-confirmed working** (round 10): refreshed the DSH GUI and verified the
-  Archon tab renders with live Archon data. Objective achieved.
-- **Archon settings added to DSH's Settings** (round 11): the plugin now also
-  registers a `settings.section` page (`id: archon`) — open DSH's Settings
-  (sidebar gear) and pick **Archon**. It mirrors Archon's own Settings page
-  through the same `/archon` relay: **Server & System** (health, version,
-  database, adapter, running workflows, concurrency bar, relay target),
-  **Assistant Configuration** (default assistant + per-provider model
-  defaults — claude model; codex model / reasoning effort / web search —
-  saved via `PATCH /archon/api/config/assistants`), **Platform Connections**,
-  and **Projects** (register/remove projects + per-project env vars via the
-  codebases env endpoints). Read-only + direct user-gesture writes; no DSH
-  model involvement. Verified end-to-end: registration test, relay coverage of
-  `/config`, `/providers`, `/codebases`, env-var PUT/DELETE and the assistants
-  PATCH write path, live-GUI bundle fingerprints, and a Playwright
-  click-through of Settings → Archon (`tests/gui-settings-verify.py` — all
-  checks pass, zero page errors).
+### Why
 
-## Try it live
+Archon runs YAML-defined DAG workflows that mix deterministic steps, AI coding
+agents (Claude Code, Codex, Pi, OpenCode, Copilot), human approval gates, and
+loops. Each run executes in its own git worktree and can be dispatched from the
+CLI, Archon's own web UI, Slack, Telegram, GitHub, Discord, or Gitea/GitLab.
+Archon's web UI is explicitly a reference implementation over public REST and
+SSE contracts, and the project invites third-party front ends.
 
-The plugin's host row is already live in the running GUI (the web profile
-hot-applied the profile-patch insert — no server restart needed). **Refresh the
-browser** at `http://127.0.0.1:3080` (hard-refresh if needed), then open any
-session: an **Archon** tab appears beside Chat/Trajectory/Terminal, plus a ◆
-sidebar icon. With an Archon v0.10.1 server reachable at
-`http://127.0.0.1:3090` (override via `DSH_ARCHON_BASE_URL`), the tab shows live
-server/project/workflow/run state and lets you launch and control runs.
+If DSH is already your daily workbench, a second browser tab with a second login
+is friction. This plugin puts Archon's console, chat, run controls, and settings
+in the DSH window you already have open, behind DSH's own authentication, and
+lets the DSH agent drive Archon from ordinary conversation.
 
-**Archon settings**: click DSH's Settings gear (sidebar foot) and pick the
-**Archon** page — the mirrored engine settings (server/system, assistant
-configuration with a Save button, platform connections, projects with env
-vars) load from and write to the live Archon server through the relay.
+### How
 
-To re-install from a clean profile (e.g. after moving the workspace):
+The plugin is a standard external DSH bundle with a host half and a browser half.
 
-```powershell
-dsh plugin --profile web add <parent-dir>/dsh-archon   # NB: run from a path
-# with no spaces, or edit package.json manually as the siblings do (see
-# docs/ACTIVATION.md) — the `dsh plugin` path anchoring splits on spaces.
+- **Host half** (`lib/index.js`): registers a same-origin reverse proxy at
+  `/archon/*` on the DSH web server that forwards REST calls and long-lived SSE
+  streams to the Archon server. Every request passes DSH's connection trust
+  fence first, so an unauthenticated page cannot reach Archon through it. The
+  host also registers the `archon_*` agent tools and a small
+  `/api/dsh-archon/state` route.
+- **Browser half** (`lib/client.js`): registers an **Archon** conversation view
+  tab beside Chat and Trajectory, a ◆ icon at the sidebar foot beside Settings,
+  and an **Archon** page in DSH's Settings. The browser never talks to Archon
+  cross-origin; everything goes through `/archon`.
+
+Archon remains the source of truth for projects, runs, artifacts, and
+configuration. The plugin stores nothing of its own.
+
+### What
+
+| Surface | What you get |
+| --- | --- |
+| **Console** mode of the Archon tab | Server health and version, a launch panel (pick a workflow, type the task, Run), registered projects, discoverable workflows, and a Runs table with approve, reject, resume, cancel, and abandon controls. Each run has a **Details** panel with its event timeline and artifacts, with inline previews of text artifacts. Live refresh over the dashboard SSE stream. |
+| **Chat** mode of the Archon tab | Pick or create a web conversation on a registered project and talk to Archon's routing agent, with streamed replies and tool activity. |
+| **Settings → Archon** | A mirror of Archon's own settings page: server and system status, assistant configuration (default assistant, per-provider model defaults, saved to Archon), platform connections, and projects with per-project environment variables. |
+| **Agent tools** | `archon_status`, `archon_workflows`, `archon_runs`, `archon_run`, and `archon_control`, available to the DSH model in any session once the plugin is loaded. |
+
+## Requirements
+
+- **DeepSeek Harness** with the `web` profile, launched with `dsh web` or, from
+  a source checkout, `pnpm dsh web`.
+- **Archon v0.10.x server** reachable over HTTP. Install Archon with its own
+  installer (`curl -fsSL https://archon.diy/install | bash`, or
+  `irm https://archon.diy/install.ps1 | iex` on Windows) or run it from source
+  with Bun. Start the server with `archon serve` (binary installs) or
+  `bun run dev` from the Archon repo.
+- The plugin talks to `http://127.0.0.1:3090` by default. Either start Archon
+  with `PORT=3090`, or set `DSH_ARCHON_BASE_URL` in the environment that
+  launches `dsh web` to whatever address Archon actually listens on.
+- Archon needs at least one AI assistant configured (for example Claude Code on
+  the `PATH`, or `CLAUDE_BIN_PATH` for compiled Archon binaries). That is
+  Archon's setup, not the plugin's; see
+  [archon.diy](https://archon.diy/getting-started/installation/).
+
+## Install
+
+Two paths lead to the same result: the plugin becomes a dependency of the
+`web` profile and a layer in its bundle list. Pick one. Do not do both, and do
+not also insert the loader row in the profile's `cordis.patch.yml`, or the row
+is inserted twice.
+
+### Option A: let an AI agent install it
+
+Paste the following into Claude Code, Codex, or a DSH session that has shell
+access. Replace the path with the absolute location of this folder.
+
+```text
+Install the dsh-archon plugin into my DeepSeek Harness web profile.
+
+1. Run: dsh plugin --profile web add "E:/Projects/deepseek harness plugins/dsh-archon"
+   (If dsh is not on PATH, run `pnpm dsh plugin --profile web add <path>` from
+   the harness source checkout instead. If the path contains spaces and the
+   command fails, fall back to the manual steps in the plugin README.)
+2. Confirm ~/.dsh/profiles/web/package.json now lists "dsh-archon" under
+   both "dependencies" and "dsh.profile.bundles", exactly once.
+3. Run `dsh --profile web --dump-config` and confirm exactly one loader row
+   with id "archon" appears.
+4. If an Archon server is not already running, start one and make sure it
+   listens on http://127.0.0.1:3090, or tell me which DSH_ARCHON_BASE_URL to set.
+5. Restart `dsh web` (host plugins are read at boot), then tell me to refresh
+   the browser and check that an "Archon" tab appears in any session and that
+   the tab header shows "server ok".
+Report each step's result. Do not modify the harness repository itself.
+```
+
+The agent needs no special knowledge of the plugin; everything it does is the
+CLI path below.
+
+### Option B: install manually from the CLI
+
+1. Add the plugin to the web profile. `dsh plugin` forwards the arguments to
+   pnpm inside `~/.dsh/profiles/web` and then adds any dependency that declares
+   a `dsh.bundle` to the profile's bundle list automatically.
+
+   ```powershell
+   dsh plugin --profile web add "E:/Projects/deepseek harness plugins/dsh-archon"
+   ```
+
+   From a harness source checkout without `dsh` on the `PATH`:
+
+   ```powershell
+   pnpm dsh plugin --profile web add "E:/Projects/deepseek harness plugins/dsh-archon"
+   ```
+
+   If the plugin path contains spaces and the command fails, edit the profile
+   by hand instead. In `~/.dsh/profiles/web/package.json` add the dependency as
+   a `link:` spec and append the package name to `dsh.profile.bundles`:
+
+   ```json
+   {
+     "dependencies": {
+       "dsh-archon": "link:E:/Projects/deepseek harness plugins/dsh-archon"
+     },
+     "dsh": {
+       "profile": {
+         "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-archon"]
+       }
+     }
+   }
+   ```
+
+   then run `pnpm install` inside `~/.dsh/profiles/web`.
+
+2. Verify the composition. Exactly one row with id `archon` must appear:
+
+   ```powershell
+   dsh --profile web --dump-config
+   ```
+
+3. Point the plugin at your Archon server if it is not on port 3090:
+
+   ```powershell
+   $env:DSH_ARCHON_BASE_URL = "http://127.0.0.1:3000"
+   ```
+
+4. Restart `dsh web`. Host bundles are only read at boot. Then refresh the
+   browser. Open any session: the **Archon** tab is beside Chat and Trajectory,
+   the ◆ icon is at the sidebar foot, and the tab header reads
+   `server ok · v0.10.x`.
+
+To remove the plugin, run `dsh plugin --profile web remove dsh-archon` and
+restart `dsh web`.
+
+## Using the plugin to create code
+
+Archon does the coding; the plugin gives you three ways to ask for it.
+
+### 1. Register the project
+
+Archon only works on registered projects (it calls them codebases). Open
+DSH's Settings, pick **Archon**, and under **Projects** add a GitHub URL or a
+local path. The same list appears in the Console under **Projects**. You can
+also register from Archon's own UI or CLI; the plugin reads the same list.
+
+### 2. Launch a workflow from the Console
+
+1. Open a session and click the **Archon** tab (or the ◆ icon, which switches
+   the current session to that tab).
+2. In the launch panel pick a workflow. Good starting points:
+
+   | Goal | Workflow |
+   | --- | --- |
+   | Ask a question, debug, explore, or make a small change | `archon-assist` |
+   | Turn a feature idea into a reviewed pull request | `archon-idea-to-pr` |
+   | Implement an existing plan and open a PR | `archon-plan-to-pr` |
+   | Fix a GitHub issue end to end | `archon-fix-github-issue` |
+   | Build an application from scratch | `archon-adversarial-dev` |
+   | Plan, implement, validate with a human check between iterations | `archon-piv-loop` |
+   | Review or validate a PR | `archon-smart-pr-review`, `archon-validate-pr` |
+
+3. Type the task in the message field, for example
+   `Add a --json flag to the export command and cover it with tests`, and click
+   **Run workflow**. The plugin creates a web conversation bound to the selected
+   project (or reuses the conversation open in Chat mode) and dispatches the
+   run into it. Archon requires that conversation; the button handles it.
+4. Watch the **Runs** table. Click **Details** on a row to see the event
+   timeline and the artifacts the run produced. Text artifacts preview inline.
+5. When a workflow pauses at an approval gate, its row shows **Approve** and
+   **Reject**. Failed or stuck runs can be resumed, cancelled, or abandoned from
+   the same row.
+
+Archon executes each run in an isolated git worktree of the registered project
+and, depending on the workflow, leaves a branch, a commit, or an opened pull
+request behind. The run's artifacts panel and Archon's own dashboard show where
+the output went.
+
+### 3. Chat with the routing agent
+
+Switch the Archon tab to **Chat**, create a conversation on a project, and
+describe what you want in plain language:
+
+```text
+Use archon-idea-to-pr to add rate limiting to the /api/upload route.
+```
+
+```text
+What workflows do I have, and which one fits a dependency upgrade?
+```
+
+Archon's routing agent picks the workflow, names the branch, and reports
+progress in the same conversation. Replies and tool activity stream live.
+
+### 4. Ask the DSH agent to do it
+
+In any normal DSH session the model can drive Archon through the plugin's
+tools. Phrase requests the way you would to a colleague:
+
+```text
+Check whether Archon is up, list its workflows, then run archon-assist on
+E:\Projects\my-app with the task "explain the auth middleware and propose
+tests". Tell me the run id.
+```
+
+```text
+Show me paused Archon runs and approve run 7f3a... with the comment "looks good".
+```
+
+The tools behind those requests:
+
+| Tool | Purpose |
+| --- | --- |
+| `archon_status` | Reachability, version, active platforms. Call first. |
+| `archon_workflows` | Discoverable workflows; pass `cwd` for a project's own `.archon/workflows`. |
+| `archon_runs` | Recent runs, filterable by status, capped by `limit`. |
+| `archon_run` | Launch a workflow by name with a task `message`; `codebase` must be a registered project path. |
+| `archon_control` | `approve`, `reject`, `resume`, `cancel`, or `abandon` a run by id. |
+
+Tools run inside the DSH host process, so they work even when the model's
+sandboxed shell cannot reach the Archon port.
+
+### Writing your own workflows
+
+Any workflow YAML placed under `.archon/workflows/<pack>/<name>/` in a
+registered project shows up in the launch panel and in `archon_workflows` with
+`cwd` set to that project. This repository ships one example,
+`.archon/workflows/dsh-feature-gap`, an analysis-only sweep that compares
+Archon's feature surface with what the plugin exposes. See Archon's
+[Authoring Workflows](https://archon.diy/guides/authoring-workflows/) guide.
+
+## Configuration
+
+| Environment variable | Meaning | Default |
+| --- | --- | --- |
+| `DSH_ARCHON_BASE_URL` | Base URL of the Archon server the host relays to | `http://127.0.0.1:3090` |
+| `ARCHON_BASE_URL` | Fallback read when `DSH_ARCHON_BASE_URL` is unset | none |
+
+Set these in the environment that launches `dsh web`.
+
+## HTTP surface on the DSH host
+
+- `GET /api/dsh-archon/state`: relay target and reachability summary.
+- `ANY /archon/*`: same-origin relay to Archon's REST API and SSE streams,
+  gated by DSH's connection trust and browser-session authentication.
+
+## Layout
+
+```text
+package.json             manifest; declares dsh.bundle and the client entry
+cordis.patch.yml         loader patch: inserts row id=archon -> this package
+lib/index.js             host entry: state route, /archon relay, agent tools
+lib/host/relay.js        same-origin reverse proxy (REST + SSE) to Archon
+lib/host/archon-client.js outbound Archon REST client used by the tools
+lib/host/tools.js        archon_status / workflows / runs / run / control
+lib/client.js            browser half: Archon tab (Console + Chat), sidebar
+                         icon, Settings -> Archon page
+.archon/workflows/       example workflow shipped with the plugin
+tests/                   run-all.mjs (smoke-apply, client-register,
+                         run-detail-render, tools-live, chat-sse-live,
+                         relay-loopback, gui-e2e) and the Playwright
+                         settings check gui-settings-verify.py
+docs/ARCHITECTURE.md     integration architecture and decisions
+docs/ACTIVATION.md       live-profile activation notes and checklist
+docs/research/           research reports on Archon and the DSH client
 ```
 
 ## Tests
 
 ```bash
-node tests/run-all.mjs    # host smoke + client registration + relay loopback
-# relay-loopback needs a live Archon API: either start one (see docs/research/02)
-# or point DSH_ARCHON_BASE_URL at any running Archon server.
-python tests/gui-settings-verify.py   # Playwright: Settings → Archon click-through
+node tests/run-all.mjs               # all suites; live ones need a running Archon
+node tests/client-register.mjs       # offline: browser bundle registrations
+node tests/run-detail-render.mjs     # offline: run detail + artifacts panel
+python tests/gui-settings-verify.py  # Playwright: Settings -> Archon click-through
 ```
 
-## Layout
+The live suites read `DSH_ARCHON_BASE_URL` and expect the DSH web GUI on
+`http://127.0.0.1:3080`.
 
-```
-lib/index.js            host entry: /api/dsh-archon/state + /archon relay + tools
-lib/host/relay.js       same-origin reverse proxy (REST + SSE) to Archon
-lib/host/archon-client.js  outbound Archon REST client (host side)
-lib/host/tools.js       M3: archon_status/workflows/runs/run/control agent tools
-lib/client.js           browser half: Archon console tab + chat + sidebar tool
-                        (M0/M1/M2) + settings.section page (Archon engine
-                        settings)
-cordis.patch.yml        loader patch: insert row id=archon -> this package
-tests/                  run-all.mjs (smoke-apply, client-register,
-                        run-detail-render, tools-live, chat-sse-live,
-                        relay-loopback, gui-e2e) +
-                        gui-settings-verify.py (Playwright settings click-through)
-docs/research/          deep-dive research reports (Archon + DSH)
-docs/ARCHITECTURE.md    integration architecture + decisions + round state
-docs/ACTIVATION.md      live-profile install state + restart checklist
-```
+## Troubleshooting
 
-## Important discovery: Archon changed shape
+- **Tab header says the server is unreachable.** Archon is not listening where
+  the plugin looks. Check `archon doctor` or `curl http://127.0.0.1:3090/api/health`,
+  then fix `DSH_ARCHON_BASE_URL` and restart `dsh web`.
+- **No Archon tab after install.** Host bundles load at boot: restart
+  `dsh web`, then hard-refresh the browser. Confirm `dsh --profile web --dump-config`
+  shows one `archon` row.
+- **"Launch failed: ... not a registered project".** Register the project under
+  Settings → Archon → Projects, or pass a path that exactly matches the
+  registered one.
+- **Two Archon tabs, or duplicate runs.** The loader row is inserted twice.
+  Keep the plugin either in `dsh.profile.bundles` or in the profile's
+  `cordis.patch.yml`, never both.
 
-`coleam00/Archon` has been **completely rewritten since the famous 2025 Python
-version**. The old Python "task management + RAG" Archon is preserved on the
-`archive/v1-task-management-rag` branch. The current `main` (v0.10.x, this
-checkout is v0.10.1) is a **Bun + TypeScript monorepo**: a self-hostable,
-governed agentic-automation engine that runs YAML-defined DAG *workflows* that
-mix deterministic nodes (`bash`/`script`), AI-agent nodes (Claude Code / Codex /
-Pi / OpenCode / Copilot), human approval gates and loops — each run isolated in
-its own git worktree, dispatched from CLI, Web UI, Slack, Telegram, GitHub,
-Discord, or Gitea/GitLab.
+## Notes on Archon versions
 
-Its own Web UI is explicitly a **reference implementation over public
-contracts**, not a privileged product layer ([direction §Web UI](./_reference/Archon/.archon/direction.md#50)) —
-Archon *invites* third-party UIs (like one built on DSH) against its REST/SSE API.
+`coleam00/Archon` was rewritten in 2025. The older Python task-management and
+RAG project lives on the `archive/v1-task-management-rag` branch. This plugin
+targets the current Bun and TypeScript server (v0.10.x) and its REST and SSE
+API only.
 
-## Layout
+## License
 
-- `docs/research/` — deep-dive research reports (4 domains).
-- `docs/ARCHITECTURE.md` — integration architecture: how DSH becomes Archon's visual layer.
-- `_reference/Archon/` — read-only shallow clone of Archon `main` (v0.10.1) for study.
-- plugin scaffold — (next) an external DSH client plugin in the sibling-plugin
-  shape used by `dsh-tmux-terminal`, `dsh-browser-sidebar`, etc.
+MIT
