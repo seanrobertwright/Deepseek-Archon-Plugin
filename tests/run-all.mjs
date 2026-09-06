@@ -9,15 +9,20 @@
  *   2. client-register.mjs    — browser bundle registers conversation.view +
  *                               sidebar.footer.action + settings.section
  *                               under __ModuleLoader__
- *   3. run-detail-render.mjs  — run detail drill-down + artifacts panel driven
+ *   3. surface-mirror.mjs     — lib/client.js embeds lib/archon-surface.js
+ *                               verbatim; normalizers accept the row shapes
+ *   4. compat-check.mjs       — package.json archon range + version check
+ *   5. run-detail-render.mjs  — run detail drill-down + artifacts panel driven
  *                               against a React shim and a stub relay (offline)
- *   4. tools-live.mjs         — M3 archon_* tools against a live Archon server
- *   5. chat-sse-live.mjs      — M2 per-conversation SSE stream via the relay
+ *   6. contract-check.mjs     — the plugin's subset of Archon's live OpenAPI
+ *                               document matches tests/contract/*.json
+ *   7. tools-live.mjs         — M3 archon_* tools against a live Archon server
+ *   8. chat-sse-live.mjs      — M2 per-conversation SSE stream via the relay
  *                               (needs a live server + AI provider)
- *   6. relay-loopback.mjs     — /archon relay REST + SSE passthrough against a
+ *   9. relay-loopback.mjs     — /archon relay REST + SSE passthrough against a
  *                               live Archon server (start it first, or point
  *                               DSH_ARCHON_BASE_URL elsewhere)
- *   7. gui-e2e.mjs            — dsh-archon LIVE in the running dsh web GUI:
+ *  10. gui-e2e.mjs            — dsh-archon LIVE in the running dsh web GUI:
  *                               boot graph carries the client row, served
  *                               bundle has M2/M1 code, /archon relay returns
  *                               real Archon JSON (needs the running GUI + a
@@ -31,7 +36,10 @@ const here = dirname(fileURLToPath(import.meta.url))
 const tests = [
   'smoke-apply.mjs',
   'client-register.mjs',
+  'surface-mirror.mjs',
+  'compat-check.mjs',
   'run-detail-render.mjs',
+  'contract-check.mjs',
   'tools-live.mjs',
   'chat-sse-live.mjs',
   'relay-loopback.mjs',

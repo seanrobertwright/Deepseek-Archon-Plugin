@@ -264,6 +264,42 @@ Archon's feature surface with what the plugin exposes. See Archon's
 
 Set these in the environment that launches `dsh web`.
 
+## Compatibility and Archon releases
+
+Archon's API is unversioned and the project is still 0.x, so the plugin
+treats every Archon release as a potential contract change and keeps the
+blast radius small.
+
+- **Declared range.** `package.json` carries `archon.tested`, `archon.min`,
+  and `archon.below`. The host compares Archon's reported version against it;
+  the Archon tab header, the Settings page, and `archon_status` say when the
+  running server is outside the tested range instead of failing on a renamed
+  field later.
+- **One coupling point.** Every Archon path, SSE frame name, and row field
+  lives in `lib/archon-surface.js`. The host imports it; the browser bundle
+  embeds a verbatim copy that `node scripts/sync-client-surface.mjs` refreshes
+  and `tests/surface-mirror.mjs` guards. The rest of the code reads the
+  normalized view models, so a rename is a one-file change.
+- **Consumer contract test.** `tests/contract-check.mjs` reduces Archon's
+  live `/api/openapi.json` to the operations the plugin calls and diffs it
+  against `tests/contract/archon-openapi.subset.json`. On a new release it
+  prints exactly which fields moved before any code changes.
+
+When Archon publishes a release:
+
+1. Read the Breaking section of Archon's changelog.
+2. Start the new server and run `node tests/contract-check.mjs`. Fix
+   `lib/archon-surface.js` for every reported change, run
+   `node scripts/sync-client-surface.mjs`, then re-record with `--update`.
+3. Run `node tests/run-all.mjs` against the new server.
+4. Raise `archon.tested` and, if the release is compatible, `archon.below` in
+   `package.json`, and tag a plugin release.
+
+Archon's coming SDK is the engine as an in-process library. This plugin talks
+to the server over HTTP, which Archon documents as the same public contract
+its own web UI uses, so the SDK needs no change here. If Archon ships a typed
+HTTP client, `lib/host/archon-client.js` is the file it would replace.
+
 ## HTTP surface on the DSH host
 
 - `GET /api/dsh-archon/state`: relay target and reachability summary.
@@ -273,19 +309,26 @@ Set these in the environment that launches `dsh web`.
 ## Layout
 
 ```text
-package.json             manifest; declares dsh.bundle and the client entry
+package.json             manifest; dsh.bundle, the client entry, and the
+                         archon.{tested,min,below} compatibility range
 cordis.patch.yml         loader patch: inserts row id=archon -> this package
+lib/archon-surface.js    every Archon path, SSE frame, and row field, plus
+                         the normalizers to the plugin's view models
 lib/index.js             host entry: state route, /archon relay, agent tools
+lib/host/compat.js       version range check against Archon's /api/health
 lib/host/relay.js        same-origin reverse proxy (REST + SSE) to Archon
 lib/host/archon-client.js outbound Archon REST client used by the tools
 lib/host/tools.js        archon_status / workflows / runs / run / control
 lib/client.js            browser half: Archon tab (Console + Chat), sidebar
-                         icon, Settings -> Archon page
+                         icon, Settings -> Archon page; embeds archon-surface
+scripts/sync-client-surface.mjs  refresh the embedded surface copy
 .archon/workflows/       example workflow shipped with the plugin
 tests/                   run-all.mjs (smoke-apply, client-register,
-                         run-detail-render, tools-live, chat-sse-live,
-                         relay-loopback, gui-e2e) and the Playwright
-                         settings check gui-settings-verify.py
+                         surface-mirror, compat-check, run-detail-render,
+                         contract-check, tools-live, chat-sse-live,
+                         relay-loopback, gui-e2e), the Playwright settings
+                         check gui-settings-verify.py, and the recorded
+                         contract snapshot under tests/contract/
 docs/ARCHITECTURE.md     integration architecture and decisions
 docs/ACTIVATION.md       live-profile activation notes and checklist
 docs/research/           research reports on Archon and the DSH client
@@ -296,7 +339,10 @@ docs/research/           research reports on Archon and the DSH client
 ```bash
 node tests/run-all.mjs               # all suites; live ones need a running Archon
 node tests/client-register.mjs       # offline: browser bundle registrations
+node tests/surface-mirror.mjs        # offline: embedded surface copy + normalizers
+node tests/compat-check.mjs          # offline: declared Archon version range
 node tests/run-detail-render.mjs     # offline: run detail + artifacts panel
+node tests/contract-check.mjs        # live: plugin's OpenAPI subset vs snapshot
 python tests/gui-settings-verify.py  # Playwright: Settings -> Archon click-through
 ```
 

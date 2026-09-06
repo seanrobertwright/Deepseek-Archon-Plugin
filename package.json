@@ -14,8 +14,17 @@
     "cordis.patch.yml"
   ],
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "platform": "web" }
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "archon": {
+    "tested": "0.10.1",
+    "min": "0.10.1",
+    "below": "0.11.0"
   },
   "license": "MIT"
 }

@@ -1,0 +1,781 @@
+{
+  "archonVersion": "0.10.1",
+  "openapi": "3.0.0",
+  "title": "Archon API",
+  "operations": {
+    "GET /api/health": {
+      "use": "server state, version",
+      "request": null,
+      "responses": {
+        "200": {
+          "activePlatforms": [
+            "string"
+          ],
+          "adapter": "string",
+          "concurrency": {},
+          "is_docker": "boolean",
+          "is_wsl": "boolean",
+          "runningWorkflows": "number",
+          "schema": {
+            "appliedAt": "string",
+            "appVersion": "string",
+            "createdAppVersion": "string",
+            "__required": [
+              "appVersion",
+              "appliedAt",
+              "createdAppVersion"
+            ]
+          },
+          "status": "string",
+          "version": "string",
+          "wsl_distro": "string",
+          "__required": [
+            "adapter",
+            "concurrency",
+            "is_docker",
+            "is_wsl",
+            "runningWorkflows",
+            "status"
+          ]
+        }
+      }
+    },
+    "GET /api/codebases": {
+      "use": "projects",
+      "request": null,
+      "responses": {
+        "200": [
+          {
+            "ai_assistant_type": "string",
+            "commands": "object",
+            "created_at": "string",
+            "default_branch": "string",
+            "default_cwd": "string",
+            "id": "string",
+            "kind": "string",
+            "name": "string",
+            "repository_url": "string",
+            "updated_at": "string",
+            "__required": [
+              "ai_assistant_type",
+              "commands",
+              "created_at",
+              "default_branch",
+              "default_cwd",
+              "id",
+              "kind",
+              "name",
+              "repository_url",
+              "updated_at"
+            ]
+          }
+        ],
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "POST /api/codebases": {
+      "use": "register project",
+      "request": {
+        "path": "string",
+        "url": "string"
+      },
+      "responses": {
+        "200": {
+          "ai_assistant_type": "string",
+          "commands": {},
+          "created_at": "string",
+          "default_branch": "string",
+          "default_cwd": "string",
+          "id": "string",
+          "kind": "string",
+          "name": "string",
+          "repository_url": "string",
+          "updated_at": "string",
+          "__required": [
+            "ai_assistant_type",
+            "commands",
+            "created_at",
+            "default_branch",
+            "default_cwd",
+            "id",
+            "kind",
+            "name",
+            "repository_url",
+            "updated_at"
+          ]
+        },
+        "201": {
+          "ai_assistant_type": "string",
+          "commands": {},
+          "created_at": "string",
+          "default_branch": "string",
+          "default_cwd": "string",
+          "id": "string",
+          "kind": "string",
+          "name": "string",
+          "repository_url": "string",
+          "updated_at": "string",
+          "__required": [
+            "ai_assistant_type",
+            "commands",
+            "created_at",
+            "default_branch",
+            "default_cwd",
+            "id",
+            "kind",
+            "name",
+            "repository_url",
+            "updated_at"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "DELETE /api/codebases/{id}": {
+      "use": "remove project",
+      "request": null,
+      "responses": {
+        "200": {
+          "success": "boolean",
+          "__required": [
+            "success"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "GET /api/codebases/{id}/env": {
+      "use": "project env keys",
+      "request": null,
+      "responses": {
+        "200": {
+          "keys": [
+            "string"
+          ],
+          "__required": [
+            "keys"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "PUT /api/codebases/{id}/env": {
+      "use": "set project env var",
+      "request": {
+        "key": "string",
+        "value": "string",
+        "__required": [
+          "key",
+          "value"
+        ]
+      },
+      "responses": {
+        "200": {
+          "success": "boolean",
+          "__required": [
+            "success"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "DELETE /api/codebases/{id}/env/{key}": {
+      "use": "delete project env var",
+      "request": null,
+      "responses": {
+        "200": {
+          "success": "boolean",
+          "__required": [
+            "success"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "GET /api/workflows": {
+      "use": "discoverable workflows",
+      "request": null,
+      "responses": {
+        "200": {
+          "errors": [
+            "object"
+          ],
+          "recommended": [
+            "string"
+          ],
+          "workflows": [
+            "object"
+          ],
+          "__required": [
+            "recommended",
+            "workflows"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "POST /api/workflows/{name}/run": {
+      "use": "launch a run",
+      "request": null,
+      "responses": {
+        "200": {
+          "accepted": "boolean",
+          "status": "string",
+          "__required": [
+            "accepted",
+            "status"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "GET /api/workflows/runs": {
+      "use": "recent runs",
+      "request": null,
+      "responses": {
+        "200": {
+          "runs": [
+            "object"
+          ],
+          "__required": [
+            "runs"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "GET /api/workflows/runs/{runId}": {
+      "use": "run detail + events",
+      "request": null,
+      "responses": {
+        "200": {
+          "events": [
+            "object"
+          ],
+          "run": "?",
+          "__required": [
+            "events",
+            "run"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "POST /api/workflows/runs/{runId}/approve": {
+      "use": "run control",
+      "request": {
+        "comment": "string"
+      },
+      "responses": {
+        "200": {
+          "message": "string",
+          "success": "boolean",
+          "__required": [
+            "message",
+            "success"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "POST /api/workflows/runs/{runId}/reject": {
+      "use": "run control",
+      "request": {
+        "reason": "string"
+      },
+      "responses": {
+        "200": {
+          "message": "string",
+          "success": "boolean",
+          "__required": [
+            "message",
+            "success"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "POST /api/workflows/runs/{runId}/resume": {
+      "use": "run control",
+      "request": null,
+      "responses": {
+        "200": {
+          "message": "string",
+          "success": "boolean",
+          "__required": [
+            "message",
+            "success"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "POST /api/workflows/runs/{runId}/cancel": {
+      "use": "run control",
+      "request": null,
+      "responses": {
+        "200": {
+          "message": "string",
+          "success": "boolean",
+          "__required": [
+            "message",
+            "success"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "POST /api/workflows/runs/{runId}/abandon": {
+      "use": "run control",
+      "request": null,
+      "responses": {
+        "200": {
+          "message": "string",
+          "success": "boolean",
+          "__required": [
+            "message",
+            "success"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "GET /api/runs/{runId}/artifacts": {
+      "use": "run artifacts",
+      "request": null,
+      "responses": {
+        "200": {
+          "files": [
+            "object"
+          ],
+          "__required": [
+            "files"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "GET /api/conversations": {
+      "use": "web conversations",
+      "request": null,
+      "responses": {
+        "200": [
+          {
+            "ai_assistant_type": "string",
+            "codebase_id": "string",
+            "created_at": "string",
+            "cwd": "string",
+            "deleted_at": "string",
+            "hidden": "boolean",
+            "id": "string",
+            "isolation_env_id": "string",
+            "last_activity_at": "string",
+            "platform_conversation_id": "string",
+            "platform_type": "string",
+            "title": "string",
+            "updated_at": "string",
+            "user_id": "string",
+            "__required": [
+              "ai_assistant_type",
+              "codebase_id",
+              "created_at",
+              "cwd",
+              "deleted_at",
+              "hidden",
+              "id",
+              "isolation_env_id",
+              "last_activity_at",
+              "platform_conversation_id",
+              "platform_type",
+              "title",
+              "updated_at",
+              "user_id"
+            ]
+          }
+        ],
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "POST /api/conversations": {
+      "use": "create web conversation",
+      "request": {
+        "codebaseId": "string",
+        "message": "string"
+      },
+      "responses": {
+        "200": {
+          "conversationId": "string",
+          "dispatched": "boolean",
+          "id": "string",
+          "__required": [
+            "conversationId",
+            "id"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "GET /api/conversations/{id}/messages": {
+      "use": "chat history",
+      "request": null,
+      "responses": {
+        "200": [
+          {
+            "content": "string",
+            "conversation_id": "string",
+            "created_at": "string",
+            "id": "string",
+            "metadata": "string",
+            "role": "string",
+            "user_id": "string",
+            "__required": [
+              "content",
+              "conversation_id",
+              "created_at",
+              "id",
+              "metadata",
+              "role",
+              "user_id"
+            ]
+          }
+        ],
+        "404": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "POST /api/conversations/{id}/message": {
+      "use": "send chat message",
+      "request": null,
+      "responses": {
+        "200": {
+          "accepted": "boolean",
+          "status": "string",
+          "__required": [
+            "accepted",
+            "status"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "GET /api/config": {
+      "use": "engine settings",
+      "request": null,
+      "responses": {
+        "200": {
+          "config": {
+            "aliases": "object",
+            "assistant": "string",
+            "assistants": "object",
+            "botName": "string",
+            "concurrency": "object",
+            "defaults": "object",
+            "streaming": "object",
+            "tierDefaults": "object",
+            "tiers": "object",
+            "__required": [
+              "assistant",
+              "assistants",
+              "botName",
+              "concurrency",
+              "defaults",
+              "streaming"
+            ]
+          },
+          "database": "string",
+          "__required": [
+            "config",
+            "database"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "PATCH /api/config/assistants": {
+      "use": "save assistant settings",
+      "request": {
+        "assistant": "string",
+        "assistants": {}
+      },
+      "responses": {
+        "200": {
+          "config": {
+            "aliases": "object",
+            "assistant": "string",
+            "assistants": "object",
+            "botName": "string",
+            "concurrency": "object",
+            "defaults": "object",
+            "streaming": "object",
+            "tierDefaults": "object",
+            "tiers": "object",
+            "__required": [
+              "assistant",
+              "assistants",
+              "botName",
+              "concurrency",
+              "defaults",
+              "streaming"
+            ]
+          },
+          "database": "string",
+          "__required": [
+            "config",
+            "database"
+          ]
+        },
+        "400": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        },
+        "500": {
+          "error": "string",
+          "__required": [
+            "error"
+          ]
+        }
+      }
+    },
+    "GET /api/providers": {
+      "use": "AI providers",
+      "request": null,
+      "responses": {
+        "200": {
+          "providers": [
+            "object"
+          ],
+          "__required": [
+            "providers"
+          ]
+        }
+      }
+    }
+  },
+  "missing": []
+}

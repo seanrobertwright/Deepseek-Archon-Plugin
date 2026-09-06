@@ -507,3 +507,42 @@ Verification (all green):
    Archon project.
 3. **Model-visible rules for M3 tools** — decide per tool whether results are
    display-only (no session event) or must be logged as durable events.
+
+## Release resilience — one coupling point, a declared range, a contract test
+
+Archon's REST API is unversioned and the project is 0.x (its 0.10.1 patch
+release carried a breaking change), so the plugin isolates everything that can
+move in an Archon release:
+
+- **`lib/archon-surface.js`** is the only code that spells an Archon path, an
+  SSE frame name, or a response field. It exports the path builders
+  (`ARCHON_PATHS`), the endpoint catalog (`ENDPOINTS`), and normalizers that
+  turn raw rows into the plugin's view models (`normalizeRun`,
+  `normalizeWorkflowList`, `normalizeProviders`, …). The host imports it; the
+  browser bundle embeds a verbatim copy between `// >>> archon-surface` and
+  `// <<< archon-surface` markers because it cannot import host modules.
+  `scripts/sync-client-surface.mjs` refreshes the copy and
+  `tests/surface-mirror.mjs` fails when it drifts. The `Archon` adapter object
+  in `lib/client.js` is the only caller of the relay helpers; every component
+  reads normalized fields.
+- **Declared compatibility** lives in `package.json` under `archon`
+  (`tested`, `min`, `below`). `lib/host/compat.js` compares Archon's
+  `/api/health` version against it; the verdict rides on
+  `/api/dsh-archon/state` (`compat`), on `archon_status`, in the Archon tab
+  header, and on the Settings page. An unknown version is undecided, never
+  treated as incompatible.
+- **`tests/contract-check.mjs`** reduces Archon's live `/api/openapi.json` to
+  the `ENDPOINTS` operations (status codes, request property names, response
+  shape two levels deep) and diffs that against
+  `tests/contract/archon-openapi.subset.json`. `--update` re-records after the
+  surface module has been adapted.
+
+Adapting to a release is therefore: read the changelog, run the contract
+check, fix the surface module, sync the client copy, re-record, run the
+suites, raise the range.
+
+This work also surfaced two latent defects that the normalizers now absorb:
+`GET /api/providers` returns `{ providers: [...] }` while the settings page
+expected a bare array (provider display names and effort levels were silently
+missing), and the runs table passed `run.status` where `controlsForRun`
+expected the run row, so no control buttons ever rendered in the list.

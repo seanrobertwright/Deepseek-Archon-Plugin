@@ -125,7 +125,9 @@ function buttonsLabelled(tree, label) {
   return findAll(tree, (n) => n.type === 'button' && textOf(n) === label)
 }
 
-const flush = async () => { for (let i = 0; i < 6; i += 1) await Promise.resolve() }
+// Drain every pending microtask chain (the adapter's normalizers add ticks): a
+// macrotask turn empties the queue regardless of chain length.
+const flush = async () => { for (let i = 0; i < 3; i += 1) await new Promise((resolve) => setTimeout(resolve, 0)) }
 
 // ---- stub relay ------------------------------------------------------------
 
