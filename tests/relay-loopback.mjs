@@ -12,6 +12,8 @@
  *      relay.
  *   4. Method passthrough: an upstream 404 (GET /archon/api/nope) comes back
  *      as 404 JSON with Archon's error envelope.
+ *   5. The run-detail read routes (run detail, artifact listing, artifact
+ *      content) reach Archon and return its envelope for an unknown run.
  *
  * Run: node tests/relay-loopback.mjs  (start the Archon server first, or set
  * DSH_ARCHON_BASE_URL to any live Archon API)
@@ -141,6 +143,21 @@ try {
     assert.equal(env.error, 'Workflow run not found', `run ${verb} error envelope`)
   }
   console.log('  ok: run-control verbs (approve/reject/cancel/resume/abandon) reach Archon')
+
+  // 7b. Read routes behind the console's run-detail drill-down: run detail,
+  //     artifact listing and artifact content all reach Archon and return its
+  //     error envelope unchanged for an unknown run.
+  for (const path of [
+    '/archon/api/workflows/runs/nonexistent-run-123',
+    '/archon/api/runs/nonexistent-run-123/artifacts',
+    '/archon/api/artifacts/nonexistent-run-123/notes/plan%20summary.md',
+  ]) {
+    const res = await fetch(relay(path), { signal: AbortSignal.timeout(10000) })
+    assert.equal(res.status, 404, `${path} through relay -> 404`)
+    const env = await res.json()
+    assert.equal(env.error, 'Workflow run not found', `${path} error envelope`)
+  }
+  console.log('  ok: run detail + artifact list/content routes reach Archon')
 
   // 8. Settings-page endpoints (the Archon settings page inside DSH Settings
   //    reads these + writes assistant config and project env vars).
