@@ -1,0 +1,139 @@
+name: dsh-feature-gap
+description: |
+  Analysis-only sweep (modeled on archon-architect's measure -> analyze -> plan)
+  that compares the full Archon v0.10 feature surface against what the
+  dsh-archon DSH plugin currently exposes, and determines which Archon features
+  the plugin should still build. Produces a written gap assessment + ranked
+  build plan as artifacts. Does NOT modify any code.
+provider: claude
+model: medium
+interactive: false
+mutates_checkout: false
+
+nodes:
+  # Phase 1: MEASURE — inventory what exists on each side (read-only).
+  - id: inventory-plugin
+    bash: |
+      set -e
+      ROOT=$(pwd)
+      echo "=== dsh-archon plugin tree (code) ==="
+      find "$ROOT/lib" -type f \( -name '*.js' \) 2>/dev/null | sort
+      echo ""
+      echo "=== plugin manifest ==="
+      sed -n '1,80p' "$ROOT/package.json" 2>/dev/null || true
+      echo ""
+      echo "=== plugin docs ==="
+      find "$ROOT/docs" -maxdepth 1 -name '*.md' 2>/dev/null | sort
+    timeout: 30000
+
+  - id: inventory-archon
+    bash: |
+      set -e
+      AROOT="E:/Projects/deepseek harness plugins/dsh-archon/_reference/Archon"
+      echo "AROOT=$AROOT exists=$([ -d "$AROOT" ] && echo yes || echo no)"
+      if [ -d "$AROOT" ]; then
+        echo "=== Archon packages ==="
+        find "$AROOT/packages" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sed "s#$AROOT/##" | sort
+        echo ""
+        echo "=== Archon bundled workflows (names) ==="
+        find "$AROOT/.archon/workflows/defaults" "$AROOT/.archon/workflows/sdlc" -name '*.yaml' 2>/dev/null | sed -E 's#.*/([a-z0-9-]+)\.yaml#\1#' | sort -u
+      fi
+    timeout: 30000
+
+  # Phase 2: ANALYZE — read both sides, build the gap list. No writes.
+  - id: analyze
+    depends_on: [inventory-plugin, inventory-archon]
+    prompt: |
+      You are a senior architect auditing the **dsh-archon plugin**, which makes the
+      DSH (DeepSeek Harness) Web GUI act as the visual layer / web UI for Archon
+      (coleam00/Archon v0.10, the AI-coding workflow engine). The plugin is an
+      external DSH bundle at the repo root. Your job: find which Archon features
+      are NOT yet exposed/built into the plugin and therefore should be added.
+
+      ## What the plugin already has (verify by reading; do not trust this list)
+      - Host: same-origin `/archon` relay (REST + SSE proxy) behind DSH's trust
+        fence; `/api/dsh-archon/state` probe; five agent tools
+        (archon_status, archon_workflows, archon_runs, archon_run, archon_control).
+      - Browser: an Archon conversation-view tab with Console mode (health,
+        projects/codebases, workflows list, runs table with
+        approve/reject/resume/cancel/abandon controls, launch panel, live
+        dashboard SSE) and Chat mode (conversation pick/create, message history,
+        composer, per-conversation SSE streaming).
+
+      ## Where to look
+      - Plugin code: `lib/client.js`, `lib/index.js`, `lib/host/*.js`, `package.json`.
+      - Plugin intent & Archon-domain notes: `docs/ARCHITECTURE.md`, `docs/ACTIVATION.md`,
+        `docs/research/01-archon-core-engine.md` and `docs/research/02-archon-server-web-adapters.md`
+        (the latter is the authoritative catalog of the Archon REST/SSE surface).
+      - Archon reference checkout (read-only): `_reference/Archon` — especially
+        `packages/server/src/routes/api.ts` (the whole /api surface), the web UI at
+        `packages/web/src/experiments/console` and `packages/web/src/routes`, and the
+        bundled workflows under `.archon/workflows/defaults`.
+
+      ## Method
+      1. Enumerate the complete Archon user-facing surface from the reference
+         checkout + research docs: REST endpoints, SSE streams, run lifecycle
+         operations, dashboard/console pages, workflow builder, workflow listing/
+         execution detail, artifacts, per-user AI prefs, provider keys, config,
+         isolation (worktrees), marketplace, etc.
+      2. For each surface, determine whether dsh-archon already surfaces it
+         (relay passthrough counts only if a UI or tool actually calls it).
+      3. Build the gap list. For each gap: which Archon feature, which REST/SSE
+         path(s) would back it, where it would live in the plugin (host route,
+         tool, console section, chat integration), rough effort (S/M/L), and why
+         a user of the plugin would care.
+
+      ## Output
+      Write `$ARTIFACTS_DIR/gap-assessment.md` containing:
+      - Executive summary (3-6 sentences): how complete the plugin is as
+        Archon's visual layer, biggest gap theme.
+      - Ranked gap table (Priority | Archon feature | API backing | Plugin
+        placement | Effort | Why it matters).
+      - Top 5 recommended additions with a one-paragraph rationale each.
+      - Explicitly mark anything the plugin already covers so we do not rebuild it.
+    allowed_tools: [Read, Glob, Grep]
+    context: fresh
+
+  # Phase 3: PLAN — convert gaps into an ordered build sequence. Pure reasoning.
+  - id: plan
+    depends_on: [analyze]
+    prompt: |
+      You are planning the next build increments for the dsh-archon plugin.
+
+      ## Gap assessment
+      $analyze.output
+
+      ## Planning rules
+      - Pick the highest-value gaps that are implementable in a DSH external
+        bundle: host-side route/tool additions or browser console/chat additions
+        in `lib/`.
+      - Respect the plugin's architecture: browser half registers via
+        `ctx.slots.register` (Console/Chat modes, per report 04); host half adds
+        `ctx.webServer` prefix routes behind `connection.requestRejection` or
+        `ctx.tools.register` tools; all Archon calls go through `lib/host/relay.js`
+        or `lib/host/archon-client.js`; tests live in `tests/` and must keep
+        `node tests/run-all.mjs` green.
+      - Order the plan so each item is independently shippable and testable.
+      - Do NOT include changes to Archon itself or to DSH core.
+
+      ## Output
+      Write `$ARTIFACTS_DIR/build-plan.md`:
+      - Numbered, ordered work items (M-next-N).
+      - For each: what to add (exact files + functions/slots), the Archon
+        endpoints used, how to verify (which test), and effort.
+      - A short "explicitly out of scope" list (things that belong to Archon or
+        DSH core, or that a DSH plugin should not do).
+    allowed_tools: [Read, Glob, Grep]
+    context: fresh
+
+  # Phase 4: REPORT — summarize for the operator.
+  - id: report
+    depends_on: [plan]
+    prompt: |
+      Read $ARTIFACTS_DIR/gap-assessment.md and $ARTIFACTS_DIR/build-plan.md and
+      produce a concise final answer to the operator:
+      - The 3-5 Archon features the plugin should build next, in priority order.
+      - One sentence each on why + where it slots into the plugin.
+      - Any feature areas already fully covered.
+      Keep it under 250 words.
+    context: fresh

@@ -1,0 +1,21 @@
+# Third-party read-only clone used for study (see README)
+_reference/
+
+# Local scratch: Archon dev home (contains .env, credential-key, sqlite db) and demo project
+.scratch/
+
+# Bun temp cache
+.bun-tmp/
+
+# Dependencies / build
+node_modules/
+dist/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db

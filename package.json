@@ -1,0 +1,21 @@
+{
+  "name": "dsh-archon",
+  "version": "0.1.0",
+  "description": "Archon (coleam00/Archon AI-coding workflow engine) as a visual layer inside the DSH Web GUI: project/workflow/run console, live SSE progress, and run controls, relayed same-origin through the dsh host.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web" }
+  },
+  "license": "MIT"
+}

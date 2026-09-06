@@ -1,0 +1,6 @@
+# Layer applied when a profile lists this bundle.
+# The row's `name` is the package name so Node resolution finds lib/index.js;
+# the client half is discovered separately via dsh.client + exports["./client"].
+- insert:
+    - id: archon
+      name: dsh-archon
