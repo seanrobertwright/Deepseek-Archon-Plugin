@@ -32,10 +32,10 @@
 - **Run detail drill-down + artifacts panel** (M-next-2 + M-next-3,
   `docs/plans/run-detail-artifacts.plan.md`): every Runs row carries a
   **Details** button that opens a side panel with the run header, an event
-  timeline (`GET /api/workflows/runs/{id}`; a long run renders its newest 300
+  timeline (`GET /archon/api/workflows/runs/{id}`; a long run renders its newest 300
   events, with a count of the older ones), and the run's artifacts
-  (`GET /api/runs/{id}/artifacts`); clicking a textual artifact previews it
-  inline from `GET /api/artifacts/{id}/*`, while binary and over-cap files
+  (`GET /archon/api/runs/{id}/artifacts`); clicking a textual artifact previews it
+  inline from `GET /archon/api/artifacts/{id}/*`, while binary and over-cap files
   offer a raw link instead. Live dashboard SSE re-fetches an open panel.
   Client-only — the relay already proxies these read routes.
 - **Real run lifecycle verified against the scratch Archon v0.10.1 server**

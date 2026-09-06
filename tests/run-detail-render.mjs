@@ -173,12 +173,18 @@ function fetchStub(url) {
   if (url === '/archon/api/workflows') return Promise.resolve(jsonResponse({ workflows: [] }))
   if (url.startsWith('/archon/api/workflows/runs?')) return Promise.resolve(jsonResponse({ runs: [RUN_ROW] }))
   if (url === `/archon/api/workflows/runs/${RUN_ID}`) return Promise.resolve(jsonResponse({ run: RUN_ROW, events: EVENTS }))
+  if (url === `/archon/api/workflows/runs/invalid-artifacts-listing`) {
+    return Promise.resolve(jsonResponse({ run: { ...RUN_ROW, id: 'invalid-artifacts-listing', workflow_name: 'bad-artifacts' }, events: [] }))
+  }
   if (url === `/archon/api/workflows/runs/${LONG_RUN_ID}`) {
     return Promise.resolve(jsonResponse({ run: LONG_RUN_ROW, events: longEvents }))
   }
   if (url === `/archon/api/runs/${LONG_RUN_ID}/artifacts`) return Promise.resolve(jsonResponse({ files: [] }))
   if (url === `/archon/api/runs/${RUN_ID}/artifacts`) {
     return Promise.resolve(jsonResponse({ files: [TEXT_FILE, BINARY_FILE, HUGE_FILE] }))
+  }
+  if (url === `/archon/api/runs/invalid-artifacts-listing/artifacts`) {
+    return Promise.resolve(jsonResponse({ status: 'ok' }))
   }
   if (url === `/archon/api/artifacts/${RUN_ID}/notes/plan%20summary.md`) {
     return Promise.resolve({ ok: true, status: 200, text: async () => TEXT_BODY })
@@ -319,6 +325,15 @@ panel.render()
 assert.equal(fetchCalls.length, beforeHuge, 'over-cap artifact is never fetched')
 assert.ok(textOf(panel.tree).includes('Too large to preview inline'), 'over-cap artifact explains itself')
 console.log('  ok: binary and over-cap artifacts degrade to a note plus raw link')
+
+// ---- 4b. malformed artifact listings are surfaced as errors ---------------
+
+const invalidPanel = mount(RunDetailPanel, { runId: 'invalid-artifacts-listing', refreshTick: 0, onClose: () => {} })
+await flush()
+invalidPanel.render()
+assert.ok(textOf(invalidPanel.tree).includes('invalid response from the server'), 'malformed artifact listings are treated as errors')
+assert.ok(!textOf(invalidPanel.tree).includes('No artifacts written by this run.'), 'malformed listings do not appear as empty runs')
+console.log('  ok: malformed artifact listings surface a clear error')
 
 // ---- 5. live refresh + close ----------------------------------------------
 
