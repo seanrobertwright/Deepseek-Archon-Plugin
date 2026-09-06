@@ -28,7 +28,16 @@
   `dsh-archon/client.js`), the served bundle carries the current M0/M1/M2 code,
   and `/archon/api/health` through the relay returns live Archon v0.10.1 JSON
   (15 conversations / 77 workflows / 3 real runs served through the same proxy).
-  All six test suites green.
+  Every test suite in `tests/run-all.mjs` green.
+- **Run detail drill-down + artifacts panel** (M-next-2 + M-next-3,
+  `docs/plans/run-detail-artifacts.plan.md`): every Runs row carries a
+  **Details** button that opens a side panel with the run header, an event
+  timeline (`GET /archon/api/workflows/runs/{id}`; a long run renders its newest 300
+  events, with a count of the older ones), and the run's artifacts
+  (`GET /archon/api/runs/{id}/artifacts`); clicking a textual artifact previews it
+  inline from `GET /archon/api/artifacts/{id}/*`, while binary and over-cap files
+  offer a raw link instead. Live dashboard SSE re-fetches an open panel.
+  Client-only — the relay already proxies these read routes.
 - **Real run lifecycle verified against the scratch Archon v0.10.1 server**
   (`:3090`): a `dsha-demo` run completed; a `dsha-gate` run paused at its
   approval gate and both **approve → completed** and **reject → cancelled**
@@ -83,8 +92,9 @@ lib/host/archon-client.js  outbound Archon REST client (host side)
 lib/host/tools.js       M3: archon_status/workflows/runs/run/control agent tools
 lib/client.js           browser half: Archon console tab + sidebar tool (M0+M1)
 cordis.patch.yml        loader patch: insert row id=archon -> this package
-tests/                  run-all.mjs (smoke-apply, client-register, tools-live,
-                        relay-loopback)
+tests/                  run-all.mjs (smoke-apply, client-register,
+                        run-detail-render, tools-live, chat-sse-live,
+                        relay-loopback, gui-e2e)
 docs/research/          deep-dive research reports (Archon + DSH)
 docs/ARCHITECTURE.md    integration architecture + decisions + round state
 docs/ACTIVATION.md      live-profile install state + restart checklist
