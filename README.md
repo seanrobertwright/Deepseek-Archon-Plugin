@@ -37,7 +37,8 @@ The plugin is a standard external DSH bundle with a host half and a browser half
   host also registers the `archon_*` agent tools and a small
   `/api/dsh-archon/state` route.
 - **Browser half** (`lib/client.js`): registers an **Archon** conversation view
-  tab beside Chat and Trajectory, a ◆ icon at the sidebar foot beside Settings,
+  tab beside Chat and Trajectory (Console, Chat, and Studio modes), a ◆ icon at
+  the sidebar foot beside Settings,
   and an **Archon** page in DSH's Settings. The browser never talks to Archon
   cross-origin; everything goes through `/archon`.
 
@@ -50,6 +51,7 @@ configuration. The plugin stores nothing of its own.
 | --- | --- |
 | **Console** mode of the Archon tab | Server health and version, a launch panel (pick a workflow, type the task, Run), registered projects, discoverable workflows, and a Runs table with approve, reject, resume, cancel, and abandon controls. Each run has a **Details** panel with its event timeline and artifacts, with inline previews of text artifacts. Live refresh over the dashboard SSE stream. |
 | **Chat** mode of the Archon tab | Pick or create a web conversation on a registered project and talk to Archon's routing agent, with streamed replies and tool activity. |
+| **Studio** mode of the Archon tab | A visual workflow builder: pick a project, open a discovered workflow, and edit its definition as a node graph — palette to add nodes, drag to arrange, click-to-connect `depends_on` wiring, and a per-node inspector. Client-side checks and Archon's own validator report into one issues panel, a YAML preview shows what will be written, and Save writes the definition back. New, Rename, Delete, and Save-as are all here; bundled workflows open read-only. |
 | **Settings → Archon** | A mirror of Archon's own settings page: server and system status, assistant configuration (default assistant, per-provider model defaults, saved to Archon), platform connections, and projects with per-project environment variables. |
 | **Agent tools** | `archon_status`, `archon_workflows`, `archon_runs`, `archon_run`, and `archon_control`, available to the DSH model in any session once the plugin is loaded. |
 
@@ -279,7 +281,8 @@ blast radius small.
   lives in `lib/archon-surface.js`. The host imports it; the browser bundle
   embeds a verbatim copy that `node scripts/sync-client-surface.mjs` refreshes
   and `tests/surface-mirror.mjs` guards. The rest of the code reads the
-  normalized view models, so a rename is a one-file change.
+  normalized view models, so a rename is a one-file change. The Studio's pure
+  round-trip logic in `lib/studio-core.js` is embedded and guarded the same way.
 - **Consumer contract test.** `tests/contract-check.mjs` reduces Archon's
   live `/api/openapi.json` to the operations the plugin calls and diffs it
   against `tests/contract/archon-openapi.subset.json`. On a new release it
@@ -314,19 +317,24 @@ package.json             manifest; dsh.bundle, the client entry, and the
 cordis.patch.yml         loader patch: inserts row id=archon -> this package
 lib/archon-surface.js    every Archon path, SSE frame, and row field, plus
                          the normalizers to the plugin's view models
+lib/studio-core.js       Workflow Studio logic with no DOM: the normalized
+                         <-> authoring node round trip, client validation,
+                         YAML preview, graph edges, and layered layout
 lib/index.js             host entry: state route, /archon relay, agent tools
 lib/host/compat.js       version range check against Archon's /api/health
 lib/host/relay.js        same-origin reverse proxy (REST + SSE) to Archon
 lib/host/archon-client.js outbound Archon REST client used by the tools
 lib/host/tools.js        archon_status / workflows / runs / run / control
-lib/client.js            browser half: Archon tab (Console + Chat), sidebar
-                         icon, Settings -> Archon page; embeds archon-surface
-scripts/sync-client-surface.mjs  refresh the embedded surface copy
+lib/client.js            browser half: Archon tab (Console + Chat + Studio),
+                         sidebar icon, Settings -> Archon page; embeds
+                         archon-surface and studio-core
+scripts/sync-client-surface.mjs  refresh the embedded module copies
 .archon/workflows/       example workflow shipped with the plugin
 tests/                   run-all.mjs (smoke-apply, client-register,
                          surface-mirror, compat-check, run-detail-render,
-                         contract-check, tools-live, chat-sse-live,
-                         relay-loopback, gui-e2e), the Playwright settings
+                         studio-core, studio-render, contract-check,
+                         tools-live, chat-sse-live, relay-loopback,
+                         gui-e2e), the Playwright settings
                          check gui-settings-verify.py, and the recorded
                          contract snapshot under tests/contract/
 docs/ARCHITECTURE.md     integration architecture and decisions
@@ -339,9 +347,11 @@ docs/research/           research reports on Archon and the DSH client
 ```bash
 node tests/run-all.mjs               # all suites; live ones need a running Archon
 node tests/client-register.mjs       # offline: browser bundle registrations
-node tests/surface-mirror.mjs        # offline: embedded surface copy + normalizers
+node tests/surface-mirror.mjs        # offline: embedded module copies + normalizers
 node tests/compat-check.mjs          # offline: declared Archon version range
 node tests/run-detail-render.mjs     # offline: run detail + artifacts panel
+node tests/studio-core.mjs           # offline: Studio round trip, validation, YAML
+node tests/studio-render.mjs         # offline: Studio canvas, inspector, save flow
 node tests/contract-check.mjs        # live: plugin's OpenAPI subset vs snapshot
 python tests/gui-settings-verify.py  # Playwright: Settings -> Archon click-through
 ```
