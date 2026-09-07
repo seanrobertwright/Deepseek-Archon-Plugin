@@ -47,9 +47,18 @@ assert.deepEqual(run, {
 assert.equal(surface.normalizeRun(null).workflow, '', 'null run row normalizes to empty fields')
 
 assert.deepEqual(surface.normalizeWorkflowList({
-  workflows: [{ workflow: { name: 'a', description: 'first\nsecond' }, source: 'bundled' }, { name: 'flat' }],
+  workflows: [
+    { workflow: { name: 'a', description: 'first\nsecond', nodes: [{ id: 'n1' }, { id: 'n2' }] }, source: 'bundled' },
+    { name: 'flat' },
+  ],
   errors: [{ filename: 'x.yaml' }],
-}), { entries: [{ name: 'a', source: 'bundled', description: 'first' }, { name: 'flat', source: '?', description: '' }], errorCount: 1 })
+}), {
+  entries: [
+    { name: 'a', source: 'bundled', description: 'first', descriptionFull: 'first\nsecond', nodeCount: 2 },
+    { name: 'flat', source: '?', description: '', descriptionFull: '', nodeCount: null },
+  ],
+  errorCount: 1,
+})
 
 assert.deepEqual(surface.normalizeProviders({ providers: [{ id: 'codex', displayName: 'Codex', effortLevels: ['low'] }] }),
   [{ id: 'codex', displayName: 'Codex', effortLevels: ['low'] }], 'wrapped provider list')
