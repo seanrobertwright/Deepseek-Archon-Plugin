@@ -17,8 +17,8 @@ dsh-archon already covers the *spine* of Archon's control plane well: health, pr
 | 5 | Project (codebase) onboarding & housekeeping | `POST/DELETE /api/codebases`, `GET/PUT/DELETE /api/codebases/{id}/env`, `GET .../environments` | New "Projects" console section: register form (URL or path), delete, env-var editor, worktree list | M | Today the console only *lists* projects read-only; a user must use Archon's own UI or CLI to onboard a project, undercutting "DSH as the visual layer" |
 | 6 | Scalable run browsing (search/filter/pagination) | `GET /api/dashboard/runs?status&codebaseId&search&after&before&limit&offset` | Replace the ad hoc `/workflows/runs?limit=30` fetch; add status chips, search box, "load more" | S–M | Current view has a hardcoded 30-row cap with no filter — exactly the "what happens at 10k rows" gap; the richer dashboard endpoint with counts already exists and is unused |
 | 7 | Delete a terminal run | `DELETE /api/workflows/runs/{runId}` | Row/detail action, terminal states only | S | The runs list only grows; no housekeeping path from the console |
-| 8 | Workflow definition viewer (read-only YAML/DAG) — **addressed by the Workflow Studio** | `GET /api/workflows/{name}?cwd=&source=` | New tab/section reachable from the Workflows list | M | Workflow entries show only name + first line of description; users can't see what a workflow actually does before running it |
-| 9 | Workflow editing / full builder — **addressed by the Workflow Studio** | `PUT/DELETE /api/workflows/{name}`, `POST /api/workflows/validate`, `GET /api/commands` | Same section, edit mode (YAML text first; node-graph canvas is a distinct, much larger project) | L | Archon ships a full drag-and-drop builder; even a YAML-text round-trip (view→edit→validate→save) would materially extend the plugin's value, but it's the largest single lift here |
+| 8 | Workflow definition viewer (read-only YAML/DAG) — **addressed by Studio (embedded Archon builder)** | `GET /api/workflows/{name}?cwd=&source=` | New tab/section reachable from the Workflows list | M | Workflow entries show only name + first line of description; users can't see what a workflow actually does before running it |
+| 9 | Workflow editing / full builder — **addressed by Studio (embedded Archon builder)** | `PUT/DELETE /api/workflows/{name}`, `POST /api/workflows/validate`, `GET /api/commands` | Same section, edit mode (YAML text first; node-graph canvas is a distinct, much larger project) | L | Archon ships a full drag-and-drop builder; even a YAML-text round-trip (view→edit→validate→save) would materially extend the plugin's value, but it's the largest single lift here |
 | 10 | Config / model tiers & aliases / provider list | `GET /api/config`, `PATCH /api/config/assistants|tiers|aliases`, `GET /api/providers` | New `settings.section` entry (slot already documented as available, currently unused) | S–M | Lets a user change default assistant/model presets without hand-editing `~/.archon/config.yaml` |
 | 11 | Per-user AI prefs, provider keys, GitHub identity | `GET/PATCH /api/auth/me/ai-prefs*`, `GET/PUT/DELETE /api/auth/providers/{provider}`, OAuth start/poll, `GET/DELETE /api/auth/github`, device flow | `settings.section`, gated on `/api/auth/status` | M | Only relevant once Better Auth is enabled (needs gap #4 fixed first), but currently zero support for any per-user identity/credential surface |
 | 12 | File attachments in chat | `POST /api/conversations/{id}/message` multipart (`message` + up to 5 files, ≤10 MB each) | Composer file input in Chat mode | S | Archon's own web chat supports file attachments to the routing agent; the plugin's composer is text-only |
@@ -27,16 +27,16 @@ dsh-archon already covers the *spine* of Archon's control plane well: health, pr
 | 15 | Update-check / deeper health (`/health/db`, `/health/concurrency`) | `GET /api/update-check`, plain `/health/*` | Console header tooltip | S | Minor: nice-to-have diagnostics, low user impact |
 
 **Status update — gaps 8 and 9.** Both are closed by the **Studio** mode of the
-Archon tab: a definition opens on a node canvas (palette, drag, click-to-connect
-`depends_on`, per-node inspector), client checks and `POST /api/workflows/validate`
-report into one issues panel, and Save writes the definition back with
-`PUT /api/workflows/{name}`, alongside New, Rename, Delete, and Save-as. Bundled
-workflows open read-only. Node kinds the Studio does not author (`include`,
-`workflow`, `loop_group`, `compose_fan_out`) still open: their graph fields are
-editable and their bodies round-trip verbatim. Not built: drag-to-connect wiring,
-undo/redo, a minimap, a structured `when` builder, `GET /api/commands`
-autocomplete, and workflows stored in a subdirectory of `.archon/workflows/`
-(the server does not serve those).
+Archon tab, which embeds Archon's own visual builder (`/console/builder`, in
+Archon since v0.7.0) in a frame on Archon's browser-facing origin. Everything
+the builder does — canvas, palette, inspector, undo/redo, client and server
+validation, load, save, rename, delete, bundled read-only with Save-as — is
+Archon's code, so the plugin declares none of the definition endpoints
+(`GET/PUT/DELETE /api/workflows/{name}`, `POST /api/workflows/validate`,
+`GET /api/commands`) itself. The plugin's part is the deep link
+(`/console/builder/<name>?project=<codebase id>`), pickers, an Edit-in-Studio
+button on each workflow card, and keeping the frame mounted across mode
+switches. Requires an Archon release that ships the builder.
 
 **Explicitly out of scope / not gaps** — confirmed unreachable even from Archon's own REST API (§8.3 of the research doc), so the plugin should not attempt them: driving non-web platform conversations (Telegram/Slack/Discord are inbound-only), creating/deleting AI sessions directly, container-isolation resume, `/internal/git-credential`, and any API-key-based auth (Archon has none — cookie or trusted header only).
 

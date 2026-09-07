@@ -521,13 +521,20 @@ move in an Archon release:
   `normalizeWorkflowList`, `normalizeProviders`, …). The host imports it; the
   browser bundle embeds a verbatim copy between `// >>> archon-surface` and
   `// <<< archon-surface` markers because it cannot import host modules.
-  The bundle carries a second embedded module the same way: the Workflow
-  Studio's pure logic, `lib/studio-core.js`, between `// >>> studio-core` and
-  `// <<< studio-core`, so its round-trip and validation rules stay testable
-  from Node. `scripts/sync-client-surface.mjs` refreshes both copies and
-  `tests/surface-mirror.mjs` fails when either drifts. The `Archon` adapter object
+  `scripts/sync-client-surface.mjs` refreshes the copy and
+  `tests/surface-mirror.mjs` fails when it drifts. The `Archon` adapter object
   in `lib/client.js` is the only caller of the relay helpers; every component
   reads normalized fields.
+- **Studio is a frame, not a port.** The Archon tab's Studio mode embeds
+  Archon's own workflow builder (`/console/builder`) in an iframe pointed at
+  Archon's browser-facing origin (`archonBrowserUrl` from the host state probe;
+  `DSH_ARCHON_BROWSER_URL` overrides it when the browser and the host reach
+  Archon at different addresses). The `/archon` relay cannot serve that page
+  because the Archon web build references its assets by absolute path, and
+  porting the builder's TypeScript and React Flow sources would need a build
+  step the plugin does not have. Archon sends no frame-blocking headers and the
+  DSH shell sets no content security policy, so the frame renders as is. The
+  plugin owns only the deep link (`?project=<codebase id>`, `/<name>`).
 - **Declared compatibility** lives in `package.json` under `archon`
   (`tested`, `min`, `below`). `lib/host/compat.js` compares Archon's
   `/api/health` version against it; the verdict rides on

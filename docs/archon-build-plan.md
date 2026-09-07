@@ -106,12 +106,14 @@ Ordered so each item ships and tests independently. Items 2–9 need **no host r
 
 ## M-next-8 — Workflow definition viewer, read-only (M) — SUPERSEDED
 
-**Status:** shipped as the full **Workflow Studio** instead. The read-only
-stopping point below no longer applies: the Studio opens a definition on a node
-canvas and edits, validates, and writes it back. The one part of this item that
-did not carry over is the `tests/relay-loopback.mjs` row (the live suites check
-main's served state); the Studio is covered by the offline `tests/studio-core.mjs`
-and `tests/studio-render.mjs` suites instead.
+**Status:** superseded by the **Studio** mode, which embeds Archon's own
+visual workflow builder (`/console/builder`, shipped in Archon v0.7.0 from the
+Studio builder PR series) in a frame. Viewing and editing a definition happen in
+Archon's canvas, not in plugin code; the plugin builds the deep link and offers
+project and workflow pickers plus an Edit-in-Studio button per workflow card. A
+first cut re-implemented the builder in plain JavaScript; it was removed because
+it duplicated, with fewer features, what the Archon server already serves. The
+frame is covered by the offline `tests/builder-render.mjs` suite.
 
 **Add:** In `lib/client.js`, add a "View" action per row in `renderWorkflows`, calling `getJson("/workflows/" + name + "?cwd=&source=")` and rendering the returned `definition` as a read-only `<pre>` block in a side panel (reuse the panel shell built for M-next-2).
 
@@ -137,7 +139,7 @@ and `tests/studio-render.mjs` suites instead.
 
 - Any change to the Archon server, its DB schema, or its REST/SSE contracts.
 - Any change to DSH core (`slots`, `webServer`, `connection` services) — this plugin only consumes those contracts.
-- Drag-to-connect wiring, marquee selection, a minimap, alignment guides, grid snap, and undo/redo — the Studio's canvas covers add/move/select/connect/delete and auto-arrange, which is what the authoring round trip needs; the richer canvas affordances stay with Archon's own web console.
+- Any builder feature at all — Studio frames Archon's builder, so canvas, validation, and save behaviour are Archon's and are not re-implemented here. The unmerged upstream follow-ups (marketplace submission, builder copilot) need Archon server changes and would arrive by running an Archon build that includes them.
 - Config/model-tier/alias editing (`PATCH /api/config/*`) and per-user AI-prefs/provider-key/GitHub-identity management (`/api/auth/me/*`, `/api/auth/providers/*`, `/api/auth/github`) — real gaps, but deferred past this 9-item pass; the provider/auth surface only becomes usable once M-next-1's cookie fix is verified against a live Better-Auth-enabled server.
 - Driving non-web platform conversations (Telegram/Slack/Discord) — those adapters are inbound-only and unreachable via REST.
 - Any API-key-based auth scheme for the relay — Archon has none; auth is cookie- or trusted-header-based only.

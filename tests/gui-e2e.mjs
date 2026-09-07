@@ -79,6 +79,8 @@ for (const [label, needle] of [
   ['assistant draft state', 'draftAssistants'],
   ['platform connections card', '"Platform Connections"'],
   ['projects add button', '+ Add project'],
+  ['Studio builder frame', 'dsha-builder-frame'],
+  ['Edit in Studio card action', '"Edit in Studio"'],
 ]) {
   assert.ok(bundle.includes(needle), `served dsh-archon bundle has ${label}`)
   console.log(`  ok: served bundle has ${label}`)

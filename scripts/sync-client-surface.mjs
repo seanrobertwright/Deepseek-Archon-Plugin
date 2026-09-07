@@ -3,10 +3,10 @@
  *
  * The browser bundle cannot import host modules, so each shared module is
  * copied verbatim between a `// >>> <block>` / `// <<< <block>` marker pair with
- * each leading `export ` stripped and the body indented to the factory. Two
- * blocks are synced today — `archon-surface` (lib/archon-surface.js) and
- * `studio-core` (lib/studio-core.js). Run after editing either module;
- * `tests/surface-mirror.mjs` fails until the copies are refreshed.
+ * each leading `export ` stripped and the body indented to the factory. One
+ * block is synced today — `archon-surface` (lib/archon-surface.js); `BLOCKS`
+ * takes more. Run after editing the module; `tests/surface-mirror.mjs` fails
+ * until the copy is refreshed.
  *
  *   node scripts/sync-client-surface.mjs          # rewrite lib/client.js
  *   node scripts/sync-client-surface.mjs --check  # exit 1 when out of date
@@ -24,17 +24,13 @@ import { dirname, join } from 'node:path'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 export const SURFACE_PATH = join(root, 'lib', 'archon-surface.js')
-export const STUDIO_CORE_PATH = join(root, 'lib', 'studio-core.js')
 export const CLIENT_PATH = join(root, 'lib', 'client.js')
 export const START = '    // >>> archon-surface (generated from lib/archon-surface.js; run scripts/sync-client-surface.mjs)\n'
 export const END = '    // <<< archon-surface\n'
-export const STUDIO_START = '    // >>> studio-core (generated from lib/studio-core.js; run scripts/sync-client-surface.mjs)\n'
-export const STUDIO_END = '    // <<< studio-core\n'
 
 /** Every embedded block, in the order they appear in the bundle. */
 export const BLOCKS = [
   { name: 'archon-surface', path: SURFACE_PATH, start: START, end: END },
-  { name: 'studio-core', path: STUDIO_CORE_PATH, start: STUDIO_START, end: STUDIO_END },
 ]
 
 /** Read a source file with its line endings folded to LF. */
@@ -58,10 +54,6 @@ export function embeddedSurface() {
   return embeddedBlock(SURFACE_PATH)
 }
 
-/** The studio-core module as it must appear inside the browser factory. */
-export function embeddedStudioCore() {
-  return embeddedBlock(STUDIO_CORE_PATH)
-}
 
 /**
  * The client bundle split around one block's markers. Defaults to the

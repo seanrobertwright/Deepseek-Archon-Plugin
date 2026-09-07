@@ -51,7 +51,7 @@ configuration. The plugin stores nothing of its own.
 | --- | --- |
 | **Console** mode of the Archon tab | Server health and version, a launch panel (pick a workflow, type the task, Run), registered projects, discoverable workflows, and a Runs table with approve, reject, resume, cancel, and abandon controls. Each run has a **Details** panel with its event timeline and artifacts, with inline previews of text artifacts. Live refresh over the dashboard SSE stream. |
 | **Chat** mode of the Archon tab | Pick or create a web conversation on a registered project and talk to Archon's routing agent, with streamed replies and tool activity. |
-| **Studio** mode of the Archon tab | A visual workflow builder: pick a project, open a discovered workflow, and edit its definition as a node graph — palette to add nodes, drag to arrange, click-to-connect `depends_on` wiring, and a per-node inspector. Client-side checks and Archon's own validator report into one issues panel, a YAML preview shows what will be written, and Save writes the definition back. New, Rename, Delete, and Save-as are all here; bundled workflows open read-only. |
+| **Studio** mode of the Archon tab | Archon's own visual workflow builder (the React Flow canvas at `/console/builder`: palette, inspector, undo/redo, validation, load, save, rename, delete) embedded in a frame. The plugin adds a project and workflow picker that deep-links the frame, an **Edit in Studio** button on every Console workflow card, Reload, and an *Open in Archon* link. The frame stays mounted while you look at Console or Chat, so unsaved edits survive. Needs an Archon release that ships the builder (v0.7.0 or later). |
 | **Settings → Archon** | A mirror of Archon's own settings page: server and system status, assistant configuration (default assistant, per-provider model defaults, saved to Archon), platform connections, and projects with per-project environment variables. |
 | **Agent tools** | `archon_status`, `archon_workflows`, `archon_runs`, `archon_run`, and `archon_control`, available to the DSH model in any session once the plugin is loaded. |
 
@@ -263,6 +263,7 @@ Archon's feature surface with what the plugin exposes. See Archon's
 | --- | --- | --- |
 | `DSH_ARCHON_BASE_URL` | Base URL of the Archon server the host relays to | `http://127.0.0.1:3090` |
 | `ARCHON_BASE_URL` | Fallback read when `DSH_ARCHON_BASE_URL` is unset | none |
+| `DSH_ARCHON_BROWSER_URL` | Archon origin the **browser** loads the Studio frame from, when it differs from the host's relay target (remote GUI, containers) | the base URL |
 
 Set these in the environment that launches `dsh web`.
 
@@ -281,8 +282,11 @@ blast radius small.
   lives in `lib/archon-surface.js`. The host imports it; the browser bundle
   embeds a verbatim copy that `node scripts/sync-client-surface.mjs` refreshes
   and `tests/surface-mirror.mjs` guards. The rest of the code reads the
-  normalized view models, so a rename is a one-file change. The Studio's pure
-  round-trip logic in `lib/studio-core.js` is embedded and guarded the same way.
+  normalized view models, so a rename is a one-file change.
+- **No second builder.** Studio embeds Archon's own workflow builder rather
+  than re-implementing it, so the canvas, validation rules, and save semantics
+  are exactly Archon's and track its releases for free. The plugin only builds
+  the deep link (`/console/builder/<name>?project=<id>`).
 - **Consumer contract test.** `tests/contract-check.mjs` reduces Archon's
   live `/api/openapi.json` to the operations the plugin calls and diffs it
   against `tests/contract/archon-openapi.subset.json`. On a new release it
@@ -317,22 +321,19 @@ package.json             manifest; dsh.bundle, the client entry, and the
 cordis.patch.yml         loader patch: inserts row id=archon -> this package
 lib/archon-surface.js    every Archon path, SSE frame, and row field, plus
                          the normalizers to the plugin's view models
-lib/studio-core.js       Workflow Studio logic with no DOM: the normalized
-                         <-> authoring node round trip, client validation,
-                         YAML preview, graph edges, and layered layout
 lib/index.js             host entry: state route, /archon relay, agent tools
 lib/host/compat.js       version range check against Archon's /api/health
 lib/host/relay.js        same-origin reverse proxy (REST + SSE) to Archon
 lib/host/archon-client.js outbound Archon REST client used by the tools
 lib/host/tools.js        archon_status / workflows / runs / run / control
-lib/client.js            browser half: Archon tab (Console + Chat + Studio),
-                         sidebar icon, Settings -> Archon page; embeds
-                         archon-surface and studio-core
-scripts/sync-client-surface.mjs  refresh the embedded module copies
+lib/client.js            browser half: Archon tab (Console + Chat + Studio
+                         frame), sidebar icon, Settings -> Archon page;
+                         embeds archon-surface
+scripts/sync-client-surface.mjs  refresh the embedded module copy
 .archon/workflows/       example workflow shipped with the plugin
 tests/                   run-all.mjs (smoke-apply, client-register,
                          surface-mirror, compat-check, run-detail-render,
-                         studio-core, studio-render, contract-check,
+                         builder-render, contract-check,
                          tools-live, chat-sse-live, relay-loopback,
                          gui-e2e), the Playwright settings
                          check gui-settings-verify.py, and the recorded
@@ -350,8 +351,7 @@ node tests/client-register.mjs       # offline: browser bundle registrations
 node tests/surface-mirror.mjs        # offline: embedded module copies + normalizers
 node tests/compat-check.mjs          # offline: declared Archon version range
 node tests/run-detail-render.mjs     # offline: run detail + artifacts panel
-node tests/studio-core.mjs           # offline: Studio round trip, validation, YAML
-node tests/studio-render.mjs         # offline: Studio canvas, inspector, save flow
+node tests/builder-render.mjs        # offline: Studio frame deep links + pickers
 node tests/contract-check.mjs        # live: plugin's OpenAPI subset vs snapshot
 python tests/gui-settings-verify.py  # Playwright: Settings -> Archon click-through
 ```
