@@ -314,6 +314,20 @@ assert.ok(
   issuesFor({ ...ok, nodes: [{ id: 'a', wait: { event: 'deploy' } }] }).some((m) => m.includes("positive integer 'deadline_ms'")),
 )
 assert.deepEqual(issuesFor({ ...ok, nodes: [{ id: 'a', wait: { event: 'deploy', deadline_ms: 1000 } }] }), [])
+assert.ok(
+  issuesFor({ ...ok, nodes: [{ id: 'a', wait: { duration_ms: 1000, deadline_ms: 1000 } }] })
+    .some((m) => m.includes("'deadline_ms' is only supported on event waits")),
+  'deadline_ms outside an event wait is refused',
+)
+assert.ok(
+  issuesFor({ ...ok, nodes: [{ id: 'a', wait: {} }] }).some((m) => m.includes('exactly one of')),
+  'a wait with no mode at all is refused, not just one with two',
+)
+assert.deepEqual(
+  issuesFor({ ...ok, nodes: [{ id: 'a', include: 'shared/setup', with: { x: 1 } }] }),
+  [],
+  'an opaque node skips the variant rules: its body is not ours to judge',
+)
 assert.equal(core.blockingIssues(core.validateModel(core.importDefinition({ ...ok, nodes: [{ id: '2bad', prompt: 'x' }] }).model)).length, 0,
   'a warning alone never blocks a save')
 console.log('  ok: client validation covers name, ids, graph, and every variant rule')

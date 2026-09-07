@@ -65,9 +65,12 @@ export function embeddedStudioCore() {
 
 /**
  * The client bundle split around one block's markers. Defaults to the
- * archon-surface block so existing callers keep working.
+ * archon-surface block so existing callers keep working. The text is folded to
+ * LF here as well as in `readText`, so a caller handing in CRLF text (a test
+ * probe, or a bundle read some other way) splits identically.
  */
-export function splitClient(start = START, end = END, client = readText(CLIENT_PATH)) {
+export function splitClient(start = START, end = END, text = readText(CLIENT_PATH)) {
+  const client = text.replace(/\r\n/g, '\n')
   const startAt = client.indexOf(start)
   const endAt = client.indexOf(end)
   if (startAt < 0 || endAt < 0 || endAt < startAt) {

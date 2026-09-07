@@ -35,7 +35,20 @@
  *  14. an approval gate's on_reject rework block renders as a preserved-note
  *      hint, not a "[object Object]" input (M4);
  *  15. opening a 404 workflow and a malformed-2xx workflow report accurate
- *      reasons instead of a subdirectory guess or a literal "null" (M6/M7).
+ *      reasons instead of a subdirectory guess or a literal "null" (M6/M7);
+ *  16. a New workflow's FIRST save PUTs under its name and turns it into a
+ *      saved, renameable, deletable workflow (isNew -> saved);
+ *  17. click-to-connect wires in the promised direction — the port's node is
+ *      the dependency, the clicked node gets the depends_on — and the saved
+ *      definition carries it that way round;
+ *  18. the whole-number inspector field refuses non-digits, removes the key
+ *      when blanked, and exports the typed integer (studioParseInt);
+ *  19. Save as refuses a syntactically invalid workflow name before any
+ *      request, the same way New and Rename do;
+ *  20. a Save reply that lands after ‹ Back is dropped — the picker shows no
+ *      stale "Saved" notice — while the write itself still refreshes the list;
+ *  21. a failed list refresh after a write is reported in the picker instead
+ *      of being swallowed.
  *
  * The sandbox has no `document`, no `EventSource`, and a `window` without
  * `addEventListener`, so this also proves the Studio's browser-API guards.
@@ -231,6 +244,10 @@ const calls = []
 const validateReplies = [{ valid: false, errors: ['boom'] }, { valid: true }, { valid: true }, { valid: true }]
 /** When set, every PUT/DELETE rejects the way fetch does when the relay is down. */
 let rejectWrites = false
+/** When set, the project's workflow LIST rejects (a relay outage between writes). */
+let failList = false
+/** Definitions PUT under project names the fixed stubs do not cover, served back on GET. */
+const written = new Map()
 
 function jsonResponse(body, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) }
@@ -244,6 +261,7 @@ function fetchStub(url, init) {
   if (rejectWrites && (method === 'PUT' || method === 'DELETE')) {
     return Promise.reject(new TypeError('fetch failed'))
   }
+  if (failList && url === LIST_URL) return Promise.reject(new TypeError('list down'))
 
   if (url === '/archon/api/health') return Promise.resolve(jsonResponse({ status: 'ok', version: '0.10.1' }))
   if (url === '/archon/api/codebases') {
@@ -281,15 +299,23 @@ function fetchStub(url, init) {
   }
   // wf-gone falls through to the default 404 so opening it exercises the real
   // not-found branch rather than a stubbed success.
-  if (url === `/archon/api/workflows/fresh-flow?cwd=${encodeURIComponent(CWD)}&source=project` && method === 'PUT') {
-    return Promise.resolve(jsonResponse({ workflow: body.definition, filename: 'fresh-flow.yaml', source: 'project' }))
+  // Any other project name (fresh-flow, wf-b, wf-copy, …) is a plain file
+  // store: PUT records the definition, GET serves it back, DELETE forgets it.
+  const projectFile = url.match(/^\/archon\/api\/workflows\/([^/?]+)\?cwd=[^&]*&source=project$/)
+  if (projectFile) {
+    const name = decodeURIComponent(projectFile[1])
+    if (method === 'PUT') {
+      written.set(name, body.definition)
+      return Promise.resolve(jsonResponse({ workflow: body.definition, filename: `${name}.yaml`, source: 'project' }))
+    }
+    if (method === 'DELETE') {
+      written.delete(name)
+      return Promise.resolve(jsonResponse({ ok: true }))
+    }
+    if (written.has(name)) {
+      return Promise.resolve(jsonResponse({ workflow: written.get(name), filename: `${name}.yaml`, source: 'project' }))
+    }
   }
-  const projectWrite = url.match(/^\/archon\/api\/workflows\/([^/?]+)\?cwd=[^&]*&source=project$/)
-  if (projectWrite && method === 'PUT') {
-    const name = decodeURIComponent(projectWrite[1])
-    return Promise.resolve(jsonResponse({ workflow: body.definition, filename: `${name}.yaml`, source: 'project' }))
-  }
-  if (projectWrite && method === 'DELETE') return Promise.resolve(jsonResponse({ ok: true }))
   return Promise.resolve(jsonResponse({ error: 'not found' }, 404))
 }
 
@@ -477,6 +503,33 @@ assert.ok(textOf(studio.tree).includes('Cannot save'), 'the blocked save says so
 assert.ok(textOf(studio.tree).includes('bash script must not be empty'), 'the blocking issue is listed')
 console.log('  ok: New seeds a workflow, the palette extends it, client errors block the save')
 
+// ---- 7b. the first save of a New workflow makes it a saved workflow ---------
+
+nodeCards(studio.tree).find((card) => textOf(card).includes('bash-1')).props.onClick()
+studio.render()
+const bashBox = findAll(studio.tree, (n) => n.type === 'textarea')[0]
+assert.equal(bashBox.props.value, '', 'the palette bash node starts with an empty script')
+bashBox.props.onChange({ target: { value: 'echo hi' } })
+studio.render()
+assert.equal(buttonsLabelled(studio.tree, 'Rename').length, 0, 'an unsaved New workflow cannot be renamed yet')
+assert.equal(buttonsLabelled(studio.tree, 'Delete').length, 0, 'nor deleted')
+
+const beforeFirstSave = calls.length
+buttonsLabelled(studio.tree, 'Save')[0].props.onClick()
+await flush()
+studio.render()
+const firstPut = calls.slice(beforeFirstSave).find((c) => c.method === 'PUT')
+assert.ok(firstPut, 'the first save writes the new workflow')
+assert.equal(firstPut.url, `/archon/api/workflows/fresh-flow?cwd=${encodeURIComponent(CWD)}&source=project`,
+  'under its own name, into the selected project')
+assert.deepEqual(firstPut.body.definition.nodes.map((n) => n.id), ['step-1', 'bash-1'], 'both nodes are written')
+assert.deepEqual(firstPut.body.definition.nodes[1], { id: 'bash-1', bash: 'echo hi' }, 'the edited bash body is written')
+assert.ok(textOf(studio.tree).includes('Saved fresh-flow'), 'the first save is confirmed')
+assert.equal(findAll(studio.tree, (n) => hasClass(n, 'dsha-dirty-dot')).length, 0, 'the new workflow is clean after its first save')
+assert.equal(buttonsLabelled(studio.tree, 'Rename').length, 1, 'a saved workflow can be renamed')
+assert.equal(buttonsLabelled(studio.tree, 'Delete').length, 1, 'and deleted')
+console.log("  ok: a New workflow's first save writes it and turns it into a saved workflow")
+
 // ---- 8. the YAML preview renders the authoring form ------------------------
 
 buttonsLabelled(studio.tree, 'YAML')[0].props.onClick()
@@ -501,9 +554,7 @@ function bubbleClick(target, ancestor) {
   if (!stopped && ancestor.props.onClick) ancestor.props.onClick()
 }
 
-buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // arms: fresh-flow is dirty
-studio.render()
-buttonsLabelled(studio.tree, 'Discard edits?')[0].props.onClick()
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // fresh-flow was saved in 7b: no arming
 studio.render()
 buttonsLabelled(studio.tree, 'Open')[0].props.onClick()
 await flush()
@@ -729,4 +780,137 @@ assert.ok(textOf(studio.tree).includes('unexpected or empty response'),
 assert.ok(!textOf(studio.tree).includes(': null.'), 'it never renders the literal word null')
 console.log('  ok: M7 — a malformed definition body is not reported as "null"')
 
-console.log('studio-render.mjs: OK — Studio picker, canvas, inspector, save flow, and lifecycle (rename/delete/save-as)')
+// ---- 19. click-to-connect wires the clicked node to depend on the port node --
+
+rowButtonFor('wf-a').props.onClick()
+await flush()
+studio.render()
+const portFor = (id) => findAll(studio.tree,
+  (n) => n.type === 'button' && n.props['aria-label'] === `Connect from ${id}`)[0]
+assert.ok(portFor('plan'), 'every writable node carries a connect port')
+portFor('plan').props.onClick({ stopPropagation() {} })
+studio.render()
+assert.ok(textOf(studio.tree).includes("should depend on 'plan'"), 'arming a port says which way the wire will go')
+nodeCards(studio.tree).find((card) => textOf(card).includes('gate')).props.onClick()
+studio.render()
+assert.equal(findAll(studio.tree, (n) => n.type === 'path' && hasClass(n, 'dsha-edge')).length, 3, 'the click adds one edge')
+assert.equal(findAll(studio.tree, (n) => hasClass(n, 'dsha-canvas-hint')).length, 0, 'the pending connect is consumed')
+
+const beforeWire = calls.length
+buttonsLabelled(studio.tree, 'Save')[0].props.onClick()
+await flush()
+studio.render()
+const wirePut = calls.slice(beforeWire).find((c) => c.method === 'PUT')
+assert.ok(wirePut, 'the wired workflow saves')
+const wired = Object.fromEntries(wirePut.body.definition.nodes.map((n) => [n.id, n]))
+assert.deepEqual(wired.gate.depends_on, ['build', 'plan'], 'the CLICKED node gained the dependency on the PORT node')
+assert.equal(wired.plan.depends_on, undefined, 'the port node itself gained nothing: the direction is not inverted')
+console.log('  ok: click-to-connect makes the clicked node depend on the port node, and saves it that way round')
+
+// ---- 20. the whole-number field parses at the boundary ----------------------
+
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // wf-a is clean after its save
+studio.render()
+rowButtonFor('wf-loop').props.onClick()
+await flush()
+studio.render()
+nodeCards(studio.tree)[0].props.onClick()
+studio.render()
+const numberBox = () => findAll(studio.tree, (n) => n.type === 'input' && n.props.inputMode === 'numeric')[0]
+assert.equal(numberBox().props.value, '3', 'Max iterations shows the imported integer')
+numberBox().props.onChange({ target: { value: '3x' } })
+studio.render()
+assert.equal(numberBox().props.value, '3', 'a non-numeric keystroke is refused outright')
+assert.equal(findAll(studio.tree, (n) => hasClass(n, 'dsha-dirty-dot')).length, 0, 'and a refused keystroke is not an edit')
+numberBox().props.onChange({ target: { value: '12' } })
+studio.render()
+assert.equal(numberBox().props.value, '12', 'digits are accepted')
+buttonsLabelled(studio.tree, 'YAML')[0].props.onClick()
+studio.render()
+const yamlText = () => textOf(findAll(studio.tree, (n) => n.type === 'pre' && hasClass(n, 'dsha-studio-yaml'))[0])
+assert.ok(yamlText().includes('max_iterations: 12'), 'the typed integer exports as a number')
+numberBox().props.onChange({ target: { value: '' } })
+studio.render()
+assert.equal(numberBox().props.value, '', 'blank clears the field')
+assert.ok(!yamlText().includes('max_iterations'), 'a blank field removes the key from the definition')
+assert.ok(!yamlText().includes('NaN'), 'no NaN ever reaches the definition')
+console.log('  ok: the whole-number field refuses non-digits, exports integers, and blanks remove the key')
+
+// ---- 21. Save as refuses an invalid workflow name before any request --------
+
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // wf-loop is dirty: arms
+studio.render()
+buttonsLabelled(studio.tree, 'Discard edits?')[0].props.onClick()
+studio.render()
+rowButtonFor('wf-bundled').props.onClick()
+await flush()
+studio.render()
+buttonsLabelled(studio.tree, 'Save as')[0].props.onClick()
+studio.render()
+for (const bad of ['../escape', 'nested/name', '.hidden']) {
+  findAll(studio.tree, (n) => n.type === 'input' && n.props.placeholder === 'my-workflow')[0]
+    .props.onChange({ target: { value: bad } })
+  studio.render()
+  const beforeBad = calls.length
+  findAll(studio.tree, (n) => n.type === 'button' && textOf(n) === 'Save as' && !hasClass(n, 'dsha-btn-small'))[0]
+    .props.onClick()
+  await flush()
+  studio.render()
+  assert.equal(calls.length, beforeBad, `'${bad}' never reaches the network`)
+  assert.ok(textOf(studio.tree).includes('is not a valid workflow name'), `'${bad}' is refused with the name rule`)
+}
+buttonsLabelled(studio.tree, 'Cancel')[0].props.onClick()
+studio.render()
+console.log('  ok: Save as checks the name syntax the way New and Rename do')
+
+// ---- 22. a Save reply that lands after ‹ Back is dropped --------------------
+
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // bundled is clean
+studio.render()
+rowButtonFor('wf-a').props.onClick()
+await flush()
+studio.render()
+nodeCards(studio.tree).find((card) => textOf(card).includes('plan')).props.onClick()
+studio.render()
+findAll(studio.tree, (n) => n.type === 'textarea')[0].props.onChange({ target: { value: 'Plan it late' } })
+studio.render()
+const beforeLate = calls.length
+buttonsLabelled(studio.tree, 'Save')[0].props.onClick() // in flight...
+studio.render()
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // ...dirty, so this arms...
+studio.render()
+buttonsLabelled(studio.tree, 'Discard edits?')[0].props.onClick() // ...and this leaves before the reply
+studio.render()
+assert.equal(buttonsLabelled(studio.tree, '‹ Back').length, 0, 'the picker is showing when the reply arrives')
+await flush()
+studio.render()
+const late = calls.slice(beforeLate)
+assert.ok(late.some((c) => c.method === 'PUT'), 'the in-flight save still completes on the server')
+assert.ok(late.some((c) => c.url === LIST_URL), 'and the list is refreshed to show it')
+assert.equal(buttonsLabelled(studio.tree, '‹ Back').length, 0, 'the late reply does not reopen the editor')
+assert.ok(!textOf(studio.tree).includes('Saved wf-a'), 'no stale "Saved" notice lands on the picker')
+assert.equal(dirtyReports[dirtyReports.length - 1], false, 'the console dirty guard is left as Back set it')
+console.log('  ok: a Save reply that lands after Back is dropped without a stale notice')
+
+// ---- 23. a failed list refresh after a write is reported --------------------
+
+rowButtonFor('wf-a').props.onClick()
+await flush()
+studio.render()
+nodeCards(studio.tree).find((card) => textOf(card).includes('plan')).props.onClick()
+studio.render()
+findAll(studio.tree, (n) => n.type === 'textarea')[0].props.onChange({ target: { value: 'Plan while the list is down' } })
+studio.render()
+failList = true
+buttonsLabelled(studio.tree, 'Save')[0].props.onClick()
+await flush()
+studio.render()
+failList = false
+assert.ok(textOf(studio.tree).includes('Saved wf-a'), 'the save itself succeeds')
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick()
+studio.render()
+assert.ok(textOf(studio.tree).includes('Workflows unavailable: list down'), 'the picker reports the failed refresh')
+assert.ok(textOf(studio.tree).includes('wf-loop'), 'the last good list is kept on screen')
+console.log('  ok: a failed list refresh after a write surfaces in the picker')
+
+console.log('studio-render.mjs: OK — Studio picker, canvas, inspector, save flow, lifecycle (rename/delete/save-as), and late-reply guards')

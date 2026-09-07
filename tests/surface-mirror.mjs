@@ -10,7 +10,10 @@
  * — and both copies are checked here.
  */
 import assert from 'node:assert/strict'
-import { embeddedSurface, embeddedStudioCore, splitClient, STUDIO_START, STUDIO_END } from '../scripts/sync-client-surface.mjs'
+import { readFileSync } from 'node:fs'
+import {
+  embeddedSurface, embeddedStudioCore, splitClient, CLIENT_PATH, START, END, STUDIO_START, STUDIO_END,
+} from '../scripts/sync-client-surface.mjs'
 import * as surface from '../lib/archon-surface.js'
 
 const { block } = splitClient()
@@ -20,6 +23,16 @@ console.log('  ok: lib/client.js mirrors lib/archon-surface.js')
 const studioBlock = splitClient(STUDIO_START, STUDIO_END).block
 assert.equal(studioBlock, embeddedStudioCore(), 'lib/client.js embedded studio-core is stale (run node scripts/sync-client-surface.mjs)')
 console.log('  ok: lib/client.js mirrors lib/studio-core.js')
+
+// The CRLF fold is exercised here regardless of how this checkout's line
+// endings came out: the bundle is re-terminated with CRLF in memory and must
+// still split into the same blocks, so a `core.autocrlf=true` checkout cannot
+// fail the mirror check on an untouched tree.
+const crlfClient = readFileSync(CLIENT_PATH, 'utf8').replace(/\r?\n/g, '\r\n')
+assert.ok(crlfClient.includes('\r\n'), 'the probe text really is CRLF-terminated')
+assert.equal(splitClient(START, END, crlfClient).block, embeddedSurface(), 'a CRLF bundle splits to the same surface block')
+assert.equal(splitClient(STUDIO_START, STUDIO_END, crlfClient).block, embeddedStudioCore(), 'a CRLF bundle splits to the same studio-core block')
+console.log('  ok: CRLF-terminated bundle text splits identically')
 
 // Normalizers accept the documented row shapes and reject garbage quietly.
 const run = surface.normalizeRun({
