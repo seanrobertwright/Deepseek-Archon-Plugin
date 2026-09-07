@@ -288,6 +288,20 @@ assert.ok(issuesFor({ ...ok, nodes: [loopBoth] }).some((m) => m.includes("exactl
 assert.ok(
   issuesFor({ ...ok, nodes: [{ id: 'a', loop: { prompt: 'p', max_iterations: 2 } }] }).some((m) => m.includes('completion channel')),
 )
+// A declared completion channel that is blank is its own error, per channel.
+const blankChannelLoop = (channel) => ({ id: 'a', loop: { prompt: 'p', [channel]: '', max_iterations: 2 } })
+assert.ok(
+  issuesFor({ ...ok, nodes: [blankChannelLoop('until')] }).some((m) => m.includes("'until' must not be blank")),
+  "a blank loop 'until' signal is refused",
+)
+assert.ok(
+  issuesFor({ ...ok, nodes: [blankChannelLoop('until_bash')] }).some((m) => m.includes("'until_bash' must not be blank")),
+  "a blank loop 'until_bash' check is refused",
+)
+assert.ok(
+  issuesFor({ ...ok, nodes: [blankChannelLoop('until_field')] }).some((m) => m.includes("'until_field' must not be blank")),
+  "a blank loop 'until_field' selector is refused",
+)
 assert.ok(
   issuesFor({ ...ok, nodes: [{ id: 'a', loop: { prompt: 'p', until: 'X', max_iterations: 0 } }] })
     .some((m) => m.includes("positive integer 'max_iterations'")),
@@ -362,7 +376,9 @@ assert.equal(core.edgeIdFor('a', 'b'), 'a->b')
 assert.deepEqual(edges.filter((e) => e.dashed).map((e) => e.id), ['a->c'], 'only edges into a when-gated node are dashed')
 
 const positions = core.layoutGraph(diamond.nodes, edges)
-assert.deepEqual(positions, {
+// layoutGraph returns a null-prototype map so a node id like `constructor` can
+// never collide with Object.prototype; compare the own keys, not the prototype.
+assert.deepEqual({ ...positions }, {
   a: { x: 0, y: 0 },
   b: { x: 0, y: core.NODE_H + 80 },
   c: { x: core.NODE_W + 40, y: core.NODE_H + 80 },
@@ -380,6 +396,64 @@ const cyclic = core.importDefinition({
 }).model
 assert.equal(Object.keys(core.layoutGraph(cyclic.nodes, core.edgesFromModel(cyclic))).length, 2, 'a cycle still lays out')
 console.log('  ok: edges follow depends_on and the layout ranks a diamond')
+
+// ---- 6b. prototype-named node ids never collide with Object.prototype -------
+// A node literally called `constructor` (or `toString`) used to corrupt the
+// id-keyed dictionaries in validateModel / checkCycles / edgesFromModel /
+// layoutGraph / uniqueNodeId, which were plain {} and read prototype members
+// as present keys. Every such map is null-prototype or read through
+// hasOwnProperty now, so the ids round-trip, validate, and lay out cleanly.
+const proto = core.importDefinition({
+  name: 'p',
+  description: 'p',
+  nodes: [
+    { id: 'constructor', prompt: 'a' },
+    { id: 'toString', depends_on: ['constructor'], prompt: 'b' },
+  ],
+}).model
+assert.deepEqual(core.validateModel(proto), [], 'prototype-named ids validate with no false duplicate or cycle')
+const protoExported = core.exportDefinition(proto)
+assert.deepEqual(protoExported.nodes.map((n) => n.id), ['constructor', 'toString'], 'prototype-named ids round-trip')
+const protoEdges = core.edgesFromModel(proto)
+assert.equal(protoEdges.length, 1, 'an edge into a node named `constructor` resolves')
+const protoPositions = core.layoutGraph(proto.nodes, protoEdges)
+assert.deepEqual({ ...protoPositions }, {
+  constructor: { x: 0, y: 0 },
+  toString: { x: 0, y: core.NODE_H + 80 },
+}, 'prototype-named ids lay out with real own positions')
+
+// A depends_on that names a node that exists only on Object.prototype is still
+// an unknown reference, and a cycle through prototype-named ids is still seen.
+const protoUnknown = core.importDefinition({
+  name: 'u',
+  description: 'u',
+  nodes: [{ id: 'a', depends_on: ['constructor'], prompt: 'a' }],
+}).model
+assert.ok(
+  core.validateModel(protoUnknown).map((i) => i.message).some((m) => m.includes("unknown node 'constructor'")),
+  "a lone 'constructor' depends_on is an unknown reference, not a silent match",
+)
+assert.deepEqual(core.edgesFromModel(protoUnknown), [], 'and it draws no edge')
+
+const protoCycle = core.importDefinition({
+  name: 'cy',
+  description: 'cy',
+  nodes: [
+    { id: 'constructor', depends_on: ['toString'], prompt: 'a' },
+    { id: 'toString', depends_on: ['constructor'], prompt: 'b' },
+  ],
+}).model
+assert.ok(
+  core.validateModel(protoCycle).map((i) => i.message).some((m) => m.includes('cycle')),
+  'a cycle through prototype-named ids is reported',
+)
+const protoModel = core.importDefinition({
+  name: 't',
+  description: 't',
+  nodes: [{ id: 'constructor', prompt: 'a' }, { id: 'toString', prompt: 'b' }],
+}).model
+assert.equal(core.uniqueNodeId('prompt', protoModel), 'prompt-1', 'a free id ignores prototype-named nodes')
+console.log('  ok: node ids named like Object.prototype members round-trip and validate')
 
 // ---- 7. model edits --------------------------------------------------------
 

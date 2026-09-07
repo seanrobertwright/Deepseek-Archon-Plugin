@@ -12,9 +12,11 @@
  *   node scripts/sync-client-surface.mjs --check  # exit 1 when out of date
  *
  * Line endings: every file is read with CRLF folded to LF before the markers are
- * matched, and `lib/client.js` is written back with LF. A CRLF checkout (this
- * repo sets `core.autocrlf=true` on Windows) therefore syncs and checks the same
- * way a LF one does, instead of failing to find the markers at all.
+ * matched, and `lib/client.js` is written back with LF. The fold is defensive —
+ * regardless of whether the checkout produced LF or CRLF files (on Windows, git
+ * may check out either depending on the user's `core.autocrlf` setting, which
+ * this repo does not force), sync and check behave the same instead of failing
+ * to find the markers at all.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'

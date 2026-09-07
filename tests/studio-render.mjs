@@ -26,6 +26,16 @@
  *  10. Rename writes the new name BEFORE deleting the old one, Delete arms on
  *      the first click and only deletes on the second, and Save as copies a
  *      bundled workflow into the project under the new name.
+ *  11. a read-only (bundled) canvas exposes no connect ports and a node click
+ *      never creates an edge (M1);
+ *  12. Save as refuses a name that already exists as a project workflow,
+ *      surfacing the reason in the name form, without a write (M2);
+ *  13. a loop's Prompt-source switch routes through commit, so the dirty guard
+ *      arms exactly like any other edit (M3);
+ *  14. an approval gate's on_reject rework block renders as a preserved-note
+ *      hint, not a "[object Object]" input (M4);
+ *  15. opening a 404 workflow and a malformed-2xx workflow report accurate
+ *      reasons instead of a subdirectory guess or a literal "null" (M6/M7).
  *
  * The sandbox has no `document`, no `EventSource`, and a `window` without
  * `addEventListener`, so this also proves the Studio's browser-API guards.
@@ -150,6 +160,13 @@ const LIST_URL = `/archon/api/workflows?cwd=${encodeURIComponent(CWD)}`
 
 const PROJECT_ENTRY = { workflow: { name: 'wf-a', description: 'Demo workflow.' }, source: 'project' }
 const BUNDLED_ENTRY = { workflow: { name: 'wf-bundled', description: 'Shipped with Archon.' }, source: 'bundled' }
+// Extra project entries for the tail sections: an approval gate with a rework
+// block (M4), a workflow the server no longer serves (M6), and one whose GET
+// 2xx body is not a definition envelope (M7).
+const APPROVAL_ENTRY = { workflow: { name: 'wf-approval', description: 'Has an on_reject rework block.' }, source: 'project' }
+const GONE_ENTRY = { workflow: { name: 'wf-gone', description: 'Removed out from under the list.' }, source: 'project' }
+const BADBODY_ENTRY = { workflow: { name: 'wf-badbody', description: 'Server returns garbage.' }, source: 'project' }
+const LOOP_ENTRY = { workflow: { name: 'wf-loop', description: 'Has a loop node.' }, source: 'project' }
 
 /** As `GET /api/workflows/{name}` returns it: engine-NORMALIZED nodes. */
 const NORMALIZED = {
@@ -174,7 +191,39 @@ const NORMALIZED = {
 const BUNDLED_DEFINITION = {
   name: 'wf-bundled',
   description: 'Shipped with Archon.',
-  nodes: [{ id: 'only', kind: 'agent', source: { kind: 'inline', prompt: 'Do it' } }],
+  nodes: [
+    { id: 'only', kind: 'agent', source: { kind: 'inline', prompt: 'Do it' } },
+    { id: 'later', kind: 'exec', runtime: 'sh', script: 'echo later' },
+  ],
+}
+
+/** A gate whose reject decision carries a rework block -> on_reject object. */
+const APPROVAL_DEFINITION = {
+  name: 'wf-approval',
+  description: 'Has an on_reject rework block.',
+  nodes: [
+    {
+      id: 'review',
+      kind: 'gate',
+      message: 'Review?',
+      decisions: [{ id: 'approve' }, { id: 'reject', rework: { prompt: 'Fix it', maxAttempts: 3 } }],
+      decisionsAuthored: false,
+      captureResponse: false,
+    },
+  ],
+}
+
+/** A loop node whose authoring block must be switchable prompt <-> command. */
+const LOOP_DEFINITION = {
+  name: 'wf-loop',
+  description: 'Has a loop node.',
+  nodes: [
+    {
+      id: 'iterate',
+      kind: 'loop',
+      loop: { prompt: 'Iterate', until: 'DONE', max_iterations: 3, fresh_context: false },
+    },
+  ],
 }
 
 const calls = []
@@ -202,7 +251,11 @@ function fetchStub(url, init) {
   }
   if (url.startsWith('/archon/api/workflows/runs')) return Promise.resolve(jsonResponse({ runs: [] }))
   if (url === '/archon/api/workflows') return Promise.resolve(jsonResponse({ workflows: [BUNDLED_ENTRY] }))
-  if (url === LIST_URL) return Promise.resolve(jsonResponse({ workflows: [PROJECT_ENTRY, BUNDLED_ENTRY] }))
+  if (url === LIST_URL) {
+    // wf-a stays first so earlier sections' 'Open'[0] / 'View'[0] clicks keep
+    // their meaning; the extra project entries only add rows at the end.
+    return Promise.resolve(jsonResponse({ workflows: [PROJECT_ENTRY, BUNDLED_ENTRY, APPROVAL_ENTRY, GONE_ENTRY, BADBODY_ENTRY, LOOP_ENTRY] }))
+  }
   if (url === '/archon/api/workflows/validate' && method === 'POST') {
     return Promise.resolve(jsonResponse(validateReplies.shift() || { valid: true }))
   }
@@ -215,6 +268,19 @@ function fetchStub(url, init) {
   if (url === '/archon/api/workflows/wf-bundled?source=bundled') {
     return Promise.resolve(jsonResponse({ workflow: BUNDLED_DEFINITION, filename: 'wf-bundled.yaml', source: 'bundled' }))
   }
+  if (url === `/archon/api/workflows/wf-approval?cwd=${encodeURIComponent(CWD)}&source=project`) {
+    return Promise.resolve(jsonResponse({ workflow: APPROVAL_DEFINITION, filename: 'wf-approval.yaml', source: 'project' }))
+  }
+  if (url === `/archon/api/workflows/wf-loop?cwd=${encodeURIComponent(CWD)}&source=project`) {
+    return Promise.resolve(jsonResponse({ workflow: LOOP_DEFINITION, filename: 'wf-loop.yaml', source: 'project' }))
+  }
+  if (url === `/archon/api/workflows/wf-badbody?cwd=${encodeURIComponent(CWD)}&source=project`) {
+    // A 2xx body that is not a definition envelope: normalizeWorkflowDefinition
+    // returns null, which openWorkflow must report without printing "null".
+    return Promise.resolve(jsonResponse({ error: 'server hiccup', nope: true }))
+  }
+  // wf-gone falls through to the default 404 so opening it exercises the real
+  // not-found branch rather than a stubbed success.
   if (url === `/archon/api/workflows/fresh-flow?cwd=${encodeURIComponent(CWD)}&source=project` && method === 'PUT') {
     return Promise.resolve(jsonResponse({ workflow: body.definition, filename: 'fresh-flow.yaml', source: 'project' }))
   }
@@ -552,5 +618,115 @@ assert.equal(savedAs[saveAsPut].body.definition.name, 'wf-copy', 'the definition
 assert.ok(textOf(studio.tree).includes('Saved wf-copy'), 'the copy is confirmed')
 assert.equal(buttonsLabelled(studio.tree, 'Save').length, 1, 'the saved copy is editable in place')
 console.log('  ok: Save as copies a bundled workflow into the project under the new name')
+
+// ---- 14. a read-only canvas offers no connect affordance (M1) ---------------
+
+/** The row's button for one named workflow in the picker list. */
+function rowButtonFor(name) {
+  const row = findAll(studio.tree, (n) => n.type === 'li' && textOf(n).includes(name))[0]
+  assert.ok(row, `a picker row for ${name}`)
+  return findAll(row, (n) => n.type === 'button')[0]
+}
+
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // wf-copy is clean
+studio.render()
+rowButtonFor('wf-bundled').props.onClick()
+await flush()
+studio.render()
+
+const connectPorts = () => findAll(studio.tree,
+  (n) => n.type === 'button' && typeof n.props['aria-label'] === 'string' && n.props['aria-label'].startsWith('Connect from'))
+assert.equal(connectPorts().length, 0, 'read-only canvases render no ⊕ connect ports')
+assert.equal(findAll(studio.tree, (n) => n.type === 'path' && hasClass(n, 'dsha-edge')).length, 0,
+  'the read-only fixture starts with no edges')
+const readOnlyCards = nodeCards(studio.tree)
+assert.equal(readOnlyCards.length, 2, 'the read-only fixture has two independent nodes')
+readOnlyCards[0].props.onClick() // select 'only'
+studio.render()
+readOnlyCards[1].props.onClick() // select 'later' — must never wire them
+studio.render()
+assert.equal(findAll(studio.tree, (n) => n.type === 'path' && hasClass(n, 'dsha-edge')).length, 0,
+  'clicking nodes in a read-only canvas never creates an edge')
+assert.equal(findAll(studio.tree, (n) => hasClass(n, 'dsha-canvas-hint')).length, 0,
+  'no pending-connect hint can appear while read-only')
+console.log('  ok: M1 — read-only canvas hides connect ports and never wires nodes on click')
+
+// ---- 15. Save as refuses an existing project name (M2) ----------------------
+
+buttonsLabelled(studio.tree, 'Save as')[0].props.onClick()
+studio.render()
+const collisionInput = findAll(studio.tree, (n) => n.type === 'input' && n.props.placeholder === 'my-workflow')[0]
+collisionInput.props.onChange({ target: { value: 'wf-a' } }) // wf-a is a project workflow here
+studio.render()
+const beforeCollision = calls.length
+findAll(studio.tree, (n) => n.type === 'button' && textOf(n) === 'Save as' && !hasClass(n, 'dsha-btn-small'))[0]
+  .props.onClick()
+await flush()
+studio.render()
+assert.ok(textOf(studio.tree).includes('already exists'), 'Save as names the existing project workflow as the blocker')
+assert.equal(calls.slice(beforeCollision).filter((c) => c.method === 'PUT').length, 0,
+  'a colliding Save as never reaches the write')
+assert.equal(findAll(studio.tree, (n) => n.type === 'input' && n.props.placeholder === 'my-workflow').length, 1,
+  'the name form stays open so the user can pick another name')
+console.log('  ok: M2 — Save as is guarded against silently overwriting a project workflow')
+
+// ---- 16. the loop Prompt-source switch arms the dirty guard (M3) ------------
+
+buttonsLabelled(studio.tree, 'Cancel')[0].props.onClick()
+studio.render()
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // bundled is clean
+studio.render()
+rowButtonFor('wf-loop').props.onClick()
+await flush()
+studio.render()
+nodeCards(studio.tree)[0].props.onClick() // select the loop node
+studio.render()
+
+const sourceSelect = findAll(studio.tree, (n) => n.type === 'select')
+  .find((n) => textOf(n).includes('inline prompt') && textOf(n).includes('command file'))
+assert.ok(sourceSelect, 'the loop inspector offers the Prompt source select')
+sourceSelect.props.onChange({ target: { value: 'command' } })
+studio.render()
+assert.equal(findAll(studio.tree, (n) => hasClass(n, 'dsha-dirty-dot')).length, 1, 'switching the source is an edit')
+assert.equal(dirtyReports[dirtyReports.length - 1], true, 'and it arms the console dirty guard like any other edit')
+assert.ok(textOf(studio.tree).includes('Loop command'), 'the inspector now edits the command file name')
+console.log('  ok: M3 — the loop Prompt-source switch commits through the dirty guard')
+
+// ---- 17. approval on_reject renders as a preserved note, not [object Object] (M4)
+
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // wf-loop is dirty now
+studio.render()
+buttonsLabelled(studio.tree, 'Discard edits?')[0].props.onClick()
+studio.render()
+rowButtonFor('wf-approval').props.onClick()
+await flush()
+studio.render()
+nodeCards(studio.tree)[0].props.onClick() // the gate node
+studio.render()
+assert.ok(textOf(studio.tree).includes("'on reject'"), 'the approval inspector mentions the on_reject block')
+assert.ok(!textOf(studio.tree).includes('[object Object]'), 'no [object Object] is rendered into a control')
+const noObjectInputs = findAll(studio.tree,
+  (n) => (n.type === 'input' || n.type === 'textarea') && String(n.props.value).includes('[object Object]'))
+assert.equal(noObjectInputs.length, 0, 'no input carries the stringified object')
+console.log('  ok: M4 — approval on_reject shows a preserved-config note instead of [object Object]')
+
+// ---- 18. opening 404 and malformed-2xx workflows reports the truth (M6/M7) --
+
+buttonsLabelled(studio.tree, '‹ Back')[0].props.onClick() // wf-approval is clean
+studio.render()
+rowButtonFor('wf-gone').props.onClick()
+await flush()
+studio.render()
+assert.ok(textOf(studio.tree).includes('not found'), 'a 404 open is called not found, not a subdirectory diagnosis')
+assert.ok(textOf(studio.tree).includes('refresh the list'), 'a 404 open tells the user how to recover')
+console.log('  ok: M6 — openWorkflow branches on the real 404 status')
+
+rowButtonFor('wf-badbody').props.onClick()
+await flush()
+studio.render()
+assert.ok(textOf(studio.tree).includes('unexpected or empty response'),
+  'a malformed 2xx definition body is reported as an unexpected response')
+assert.ok(!textOf(studio.tree).includes(': null.'), 'it never renders the literal word null')
+console.log('  ok: M7 — a malformed definition body is not reported as "null"')
 
 console.log('studio-render.mjs: OK — Studio picker, canvas, inspector, save flow, and lifecycle (rename/delete/save-as)')
