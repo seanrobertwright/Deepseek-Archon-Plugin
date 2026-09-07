@@ -521,8 +521,11 @@ move in an Archon release:
   `normalizeWorkflowList`, `normalizeProviders`, …). The host imports it; the
   browser bundle embeds a verbatim copy between `// >>> archon-surface` and
   `// <<< archon-surface` markers because it cannot import host modules.
-  `scripts/sync-client-surface.mjs` refreshes the copy and
-  `tests/surface-mirror.mjs` fails when it drifts. The `Archon` adapter object
+  The bundle carries a second embedded module the same way: the Workflow
+  Studio's pure logic, `lib/studio-core.js`, between `// >>> studio-core` and
+  `// <<< studio-core`, so its round-trip and validation rules stay testable
+  from Node. `scripts/sync-client-surface.mjs` refreshes both copies and
+  `tests/surface-mirror.mjs` fails when either drifts. The `Archon` adapter object
   in `lib/client.js` is the only caller of the relay helpers; every component
   reads normalized fields.
 - **Declared compatibility** lives in `package.json` under `archon`
